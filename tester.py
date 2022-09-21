@@ -1,0 +1,6 @@
+from controllers.controller_factory import ControllerFactory
+from controllers.controller import Controller
+from controllers.differential_orthogonal_exponential import DifferentialOrthogonalExponential
+
+controller_factory = ControllerFactory()
+controller = controller_factory.load_parameters_from_yaml('test_parameters.yaml')
