@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.23)
+project(norlab_controllers)
+
+set(CMAKE_CXX_STANDARD 14)
+
+include_directories(norlab_controllers)
+
+add_library(norlab_controllers norlab_controllers/controllers/Controller.cpp norlab_controllers/Path.cpp norlab_controllers/Path.h norlab_controllers/controllers/DifferentialOrthogonalExponential.cpp norlab_controllers/controllers/DifferentialOrthogonalExponential.h)
+
