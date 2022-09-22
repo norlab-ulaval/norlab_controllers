@@ -3,4 +3,5 @@ rate: 20
 minimum_linear_velocity: 0.1
 maximum_linear_velocity: 2.0
 maximum_angular_velocity: 2.0
+gain_path_convergence: 1.0
 

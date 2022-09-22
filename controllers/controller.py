@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import numpy as np
 
 class Controller(metaclass=ABCMeta):
     def __init__(self, parameter_map):
