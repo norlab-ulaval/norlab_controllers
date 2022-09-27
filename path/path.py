@@ -9,6 +9,7 @@ class Path:
         self.pose_kdtree = KDTree(poses)
 
         self.curvatures = np.zeros(self.n_poses)
+        self.look_ahead_curvatures = np.zeros(self.n_poses)
         self.distances_to_goal = np.zeros(self.n_poses)
         self.angles = np.zeros(self.n_poses)
         self.angles_spatial_window = 0.25
@@ -46,6 +47,20 @@ class Path:
 
         # curvatures_list = np.gradient(self.poses[:,:2])
         # self.curvatures = np.sqrt(np.square(curvatures_list[0]) + np.square(curvatures_list[1]))
+
+    def compute_look_ahead_curvatures(self, look_ahead_distance):
+        for i in range(0, self.n_poses-1):
+            path_iterator = 0
+            look_ahead_distance_counter = 0
+            path_curvature_sum = 0
+            while look_ahead_distance_counter <= look_ahead_distance:
+                if i + path_iterator + 1 == self.n_poses:
+                    break
+                path_curvature_sum += np.abs(self.curvatures[i + path_iterator])
+                look_ahead_distance_counter += self.distances_to_goal[i + path_iterator] - \
+                                               self.distances_to_goal[i + path_iterator + 1]
+                path_iterator += 1
+            self.look_ahead_curvatures[i] = path_curvature_sum
 
     def compute_distances_to_goal(self):
         distance_to_goal = 0
