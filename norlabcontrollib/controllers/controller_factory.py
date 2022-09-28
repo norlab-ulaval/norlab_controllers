@@ -1,4 +1,4 @@
-from controllers.differential_orthogonal_exponential import DifferentialOrthogonalExponential
+from norlabcontrollib.controllers.differential_orthogonal_exponential import DifferentialOrthogonalExponential
 import yaml
 
 class ControllerFactory:

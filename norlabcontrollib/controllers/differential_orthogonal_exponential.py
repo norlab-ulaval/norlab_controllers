@@ -1,4 +1,4 @@
-from controllers.controller import Controller
+from norlabcontrollib.controllers.controller import Controller
 import numpy as np
 
 class DifferentialOrthogonalExponential(Controller):
