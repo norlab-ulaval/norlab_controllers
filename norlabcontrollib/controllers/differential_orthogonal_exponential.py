@@ -15,6 +15,9 @@ class DifferentialOrthogonalExponential(Controller):
     def update_path(self, new_path):
         self.path = new_path
 
+    def compute_distance_to_goal(self, state):
+        self.distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
+        return None
     def compute_linear_velocity(self, orthogonal_projection_id):
 
         path_curvature = self.path.look_ahead_curvatures[orthogonal_projection_id]
@@ -38,6 +41,7 @@ class DifferentialOrthogonalExponential(Controller):
 
     def compute_command_vector(self, state):
         orthogonal_projection_dist, orthogonal_projection_id = self.path.compute_orthogonal_projection(state[:2])
+        self.compute_distance_to_goal(state)
         command_linear_velocity = self.compute_linear_velocity(orthogonal_projection_id)
         command_angular_velocity = self.compute_angular_velocity(state, orthogonal_projection_dist, orthogonal_projection_id)
         return np.array([command_linear_velocity, command_angular_velocity])
