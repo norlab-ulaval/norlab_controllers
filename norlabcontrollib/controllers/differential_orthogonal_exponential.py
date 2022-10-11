@@ -10,6 +10,8 @@ class DifferentialOrthogonalExponential(Controller):
         self.gain_path_curvature_linear = parameter_map['gain_path_curvature_linear']
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
 
+        self.distance_to_goal = 100000
+
     def update_path(self, new_path):
         self.path = new_path
 
@@ -18,9 +20,9 @@ class DifferentialOrthogonalExponential(Controller):
         path_curvature = self.path.look_ahead_curvatures[orthogonal_projection_id]
 
 
-        distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
+        self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
         command_linear_velocity = self.maximum_linear_velocity * np.exp(-self.gain_path_curvature_linear * path_curvature -
-                                                                        -self.gain_distance_to_goal_linear / distance_to_goal)
+                                                                        -self.gain_distance_to_goal_linear / self.distance_to_goal)
         command_linear_velocity = np.clip(command_linear_velocity, self.minimum_linear_velocity, self.maximum_linear_velocity)
         return command_linear_velocity
 

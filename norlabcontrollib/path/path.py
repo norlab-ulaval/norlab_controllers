@@ -48,7 +48,7 @@ class Path:
         # curvatures_list = np.gradient(self.poses[:,:2])
         # self.curvatures = np.sqrt(np.square(curvatures_list[0]) + np.square(curvatures_list[1]))
 
-    def compute_look_ahead_curvatures(self, look_ahead_distance):
+    def compute_look_ahead_curvatures(self, look_ahead_distance=1.0):
         for i in range(0, self.n_poses-1):
             path_iterator = 0
             look_ahead_distance_counter = 0

@@ -7,6 +7,7 @@ class Controller(metaclass=ABCMeta):
         self.minimum_linear_velocity = parameter_map['minimum_linear_velocity']
         self.maximum_linear_velocity = parameter_map['maximum_linear_velocity']
         self.maximum_angular_velocity = parameter_map['maximum_angular_velocity']
+        self.goal_tolerance = parameter_map['goal_tolerance']
 
     @abstractmethod
     def compute_command_vector(self, state):
