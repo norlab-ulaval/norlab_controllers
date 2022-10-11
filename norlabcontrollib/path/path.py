@@ -80,6 +80,12 @@ class Path:
             self.angles[i] = np.arctan2(self.poses[j, 0] - self.poses[i, 0], self.poses[j, 1] - self.poses[i, 1])
             distance_counter = 0
 
+    def compute_metrics(self):
+        self.compute_curvatures()
+        self.compute_look_ahead_curvatures()
+        self.compute_distances_to_goal()
+        self.compute_angles()
+        return None
 
     def compute_orthogonal_projection(self, pose):
         orthogonal_projection_dist, orthogonal_projection_id = self.pose_kdtree.query(pose)
