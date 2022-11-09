@@ -13,6 +13,7 @@ class Path:
         self.distances_to_goal = np.zeros(self.n_poses)
         self.angles = np.zeros(self.n_poses)
         self.angles_spatial_window = 0.25
+        self.world_to_path_tfs_array = np.ndarray((self.n_poses,3,3))
     def compute_curvatures(self):
         first_derivative_x = np.zeros(self.n_poses)
         first_derivative_y = np.zeros(self.n_poses)
@@ -79,6 +80,17 @@ class Path:
                 j += 1
             self.angles[i] = np.arctan2(self.poses[j, 0] - self.poses[i, 0], self.poses[j, 1] - self.poses[i, 1])
             distance_counter = 0
+
+    def compute_world_to_path_frame_tfs(self):
+        path_to_world_tf = np.eye((3,3))
+        for i in range(0, self.n_poses):
+            path_to_world_tf[0, 0] = np.cos(self.angles[i])
+            path_to_world_tf[0, 1] = -np.sin(self.angles[i])
+            path_to_world_tf[0, 2] = self.poses[i, 0]
+            path_to_world_tf[1, 0] = np.sin(self.angles[i])
+            path_to_world_tf[1, 1] = np.cos(self.angles[i])
+            path_to_world_tf[1, 2] = self.poses[i, 1]
+            self.world_to_path_tfs_array[i, :, :] = np.linalg.inv(path_to_world_tf)
 
     def compute_metrics(self):
         self.compute_curvatures()

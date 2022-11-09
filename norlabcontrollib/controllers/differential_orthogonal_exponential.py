@@ -31,10 +31,19 @@ class DifferentialOrthogonalExponential(Controller):
         command_linear_velocity = np.clip(command_linear_velocity, self.minimum_linear_velocity, self.maximum_linear_velocity)
         return command_linear_velocity
 
-    def compute_angular_velocity(self, state, orthogonal_projection_dist):
-        target_exponential_tangent_angle = np.arctan(-self.gain_path_convergence * orthogonal_projection_dist)
+    def apply_tf(self, state, tf):
+        homo_state = np.ones(3)
+        homo_state[0] = state[0]
+        homo_state[1] = state[1]
+        homo_state_transformed =  tf @ homo_state
+        return homo_state_transformed[:2]
+    def compute_angular_velocity(self, state, orthogonal_projection_id):
+        self.projection_pose_path_frame = self.apply_tf(self.poses[orthogonal_projection_id],
+                                                        self.path.world_to_path_tfs_array[orthogonal_projection_id])
 
-        error_angle = target_exponential_tangent_angle - state[5]
+        self.target_exponential_tangent_angle = np.arctan(-self.gain_path_convergence * self.projection_pose_path_frame[1])
+
+        error_angle = self.target_exponential_tangent_angle - state[5]
 
         # print("yaw :" + str(state[5]))
         # print("error_angle :" + str(error_angle))
@@ -46,12 +55,10 @@ class DifferentialOrthogonalExponential(Controller):
 
     def compute_command_vector(self, state):
         # print("state :", state)
-        orthogonal_projection_dist, orthogonal_projection_id = self.path.compute_orthogonal_projection(state[:2])
-        print(orthogonal_projection_id)
-        print(orthogonal_projection_dist)
+        self.orthogonal_projection_dist, self.orthogonal_projection_id = self.path.compute_orthogonal_projection(state[:2])
         self.compute_distance_to_goal(state)
-        command_linear_velocity = self.compute_linear_velocity(orthogonal_projection_id)
-        command_angular_velocity = self.compute_angular_velocity(state, orthogonal_projection_dist)
+        command_linear_velocity = self.compute_linear_velocity(self.orthogonal_projection_id)
+        command_angular_velocity = self.compute_angular_velocity(state, self.orthogonal_projection_id)
         return np.array([command_linear_velocity, command_angular_velocity])
 
         # TODO: Currently set up as a proportional controller for angular velocity control, investigate the need to use derivative component
