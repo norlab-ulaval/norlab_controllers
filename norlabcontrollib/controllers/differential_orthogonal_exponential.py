@@ -47,6 +47,8 @@ class DifferentialOrthogonalExponential(Controller):
     def compute_command_vector(self, state):
         # print("state :", state)
         orthogonal_projection_dist, orthogonal_projection_id = self.path.compute_orthogonal_projection(state[:2])
+        print(orthogonal_projection_id)
+        print(orthogonal_projection_dist)
         self.compute_distance_to_goal(state)
         command_linear_velocity = self.compute_linear_velocity(orthogonal_projection_id)
         command_angular_velocity = self.compute_angular_velocity(state, orthogonal_projection_dist)
