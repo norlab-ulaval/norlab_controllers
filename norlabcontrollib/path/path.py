@@ -6,7 +6,7 @@ class Path:
     def __init__(self, poses):
         self.poses = poses
         self.n_poses = self.poses.shape[0]
-        self.pose_kdtree = KDTree(poses)
+        self.pose_kdtree = KDTree(poses[:, :2])
 
         self.curvatures = np.zeros(self.n_poses)
         self.look_ahead_curvatures = np.zeros(self.n_poses)
@@ -84,11 +84,11 @@ class Path:
         self.compute_curvatures()
         self.compute_look_ahead_curvatures()
         self.compute_distances_to_goal()
-        self.compute_angles()
+        # self.compute_angles()
         return None
 
     def compute_orthogonal_projection(self, pose):
-        orthogonal_projection_dist, orthogonal_projection_id = self.pose_kdtree.query(pose)
+        orthogonal_projection_dist, orthogonal_projection_id = self.pose_kdtree.query(pose[:2])
         return orthogonal_projection_dist, orthogonal_projection_id
 
 # TODO: find a way to split path into multiple directional paths to switch robot direction
