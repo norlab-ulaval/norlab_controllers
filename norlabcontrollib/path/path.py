@@ -72,17 +72,17 @@ class Path:
     def compute_angles(self):
         distance_counter = 0
         for i in range(0, self.n_poses-1):
-            j = i+1
+            j = i
             while distance_counter <= self.angles_spatial_window:
                 if j == self.n_poses - 1:
                     break
-                distance_counter = self.distances_to_goal[i] - self.distances_to_goal[j]
                 j += 1
-            self.angles[i] = np.arctan2(self.poses[j, 0] - self.poses[i, 0], self.poses[j, 1] - self.poses[i, 1])
+                distance_counter = self.distances_to_goal[i] - self.distances_to_goal[j]
+            self.angles[i] = np.arctan2(self.poses[j, 1] - self.poses[i, 1], self.poses[j, 0] - self.poses[i, 0])
             distance_counter = 0
 
     def compute_world_to_path_frame_tfs(self):
-        path_to_world_tf = np.eye((3,3))
+        path_to_world_tf = np.eye(3)
         for i in range(0, self.n_poses):
             path_to_world_tf[0, 0] = np.cos(self.angles[i])
             path_to_world_tf[0, 1] = -np.sin(self.angles[i])
@@ -96,7 +96,8 @@ class Path:
         self.compute_curvatures()
         self.compute_look_ahead_curvatures()
         self.compute_distances_to_goal()
-        # self.compute_angles()
+        self.compute_angles()
+        self.compute_world_to_path_frame_tfs()
         return None
 
     def compute_orthogonal_projection(self, pose):

@@ -29,7 +29,16 @@ class DifferentialOrthogonalExponential(Controller):
         command_linear_velocity = self.maximum_linear_velocity * np.exp(-self.gain_path_curvature_linear * path_curvature -
                                                                         -self.gain_distance_to_goal_linear / self.distance_to_goal)
         command_linear_velocity = np.clip(command_linear_velocity, self.minimum_linear_velocity, self.maximum_linear_velocity)
-        return command_linear_velocity
+        #return command_linear_velocity
+        return 0.2
+
+    def wrap2pi(self, angle):
+        if angle <= np.pi and angle >= -np.pi:
+            return (angle)
+        elif angle < -np.pi:
+            return (self.wrap2pi(angle + 2 * np.pi))
+        else:
+            return (self.wrap2pi(angle - 2 * np.pi))
 
     def apply_tf(self, state, tf):
         homo_state = np.ones(3)
@@ -38,17 +47,19 @@ class DifferentialOrthogonalExponential(Controller):
         homo_state_transformed =  tf @ homo_state
         return homo_state_transformed[:2]
     def compute_angular_velocity(self, state, orthogonal_projection_id):
-        self.projection_pose_path_frame = self.apply_tf(self.poses[orthogonal_projection_id],
+        self.projection_pose_path_frame = self.apply_tf(state[:2],
                                                         self.path.world_to_path_tfs_array[orthogonal_projection_id])
 
         self.target_exponential_tangent_angle = np.arctan(-self.gain_path_convergence * self.projection_pose_path_frame[1])
 
-        error_angle = self.target_exponential_tangent_angle - state[5]
+        self.robot_yaw_path_frame = self.wrap2pi(state[5] - self.path.angles[orthogonal_projection_id])
+
+        self.error_angle = self.target_exponential_tangent_angle - self.robot_yaw_path_frame
 
         # print("yaw :" + str(state[5]))
         # print("error_angle :" + str(error_angle))
 
-        command_angular_velocity = self.gain_proportional_angular * error_angle
+        command_angular_velocity = self.gain_proportional_angular * self.error_angle
         command_angular_velocity = np.clip(command_angular_velocity, -self.maximum_angular_velocity, self.maximum_angular_velocity)
         return command_angular_velocity
     #TODO: Possibly need for wrap2pi here
