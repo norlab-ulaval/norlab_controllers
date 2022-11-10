@@ -29,6 +29,9 @@ class DifferentialOrthogonalExponential(Controller):
         command_linear_velocity = self.maximum_linear_velocity * np.exp(-self.gain_path_curvature_linear * path_curvature -
                                                                         self.gain_distance_to_goal_linear / self.distance_to_goal)
         command_linear_velocity = np.clip(command_linear_velocity, self.minimum_linear_velocity, self.maximum_linear_velocity)
+
+        if not self.path.going_forward:
+            command_linear_velocity = -command_linear_velocity
         return command_linear_velocity
 
     def wrap2pi(self, angle):
@@ -46,12 +49,19 @@ class DifferentialOrthogonalExponential(Controller):
         homo_state_transformed =  tf @ homo_state
         return homo_state_transformed[:2]
     def compute_angular_velocity(self, state, orthogonal_projection_id):
+        if not self.path.going_forward:
+            if state[5] >= 0:
+                self.current_yaw = -np.pi + state[5]
+            else:
+                self.current_yaw = np.pi + state[5]
+        else:
+            self.current_yaw = state[5]
         self.projection_pose_path_frame = self.apply_tf(state[:2],
                                                         self.path.world_to_path_tfs_array[orthogonal_projection_id])
 
         self.target_exponential_tangent_angle = np.arctan(-self.gain_path_convergence * self.projection_pose_path_frame[1])
 
-        self.robot_yaw_path_frame = self.wrap2pi(state[5] - self.path.angles[orthogonal_projection_id])
+        self.robot_yaw_path_frame = self.wrap2pi(self.current_yaw - self.path.angles[orthogonal_projection_id])
 
         self.error_angle = self.target_exponential_tangent_angle - self.robot_yaw_path_frame
 
