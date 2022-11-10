@@ -75,6 +75,7 @@ class Path:
             j = i
             while distance_counter <= self.angles_spatial_window:
                 if j == self.n_poses - 1:
+                    self.angles[i:] = self.angles[i-1]
                     break
                 j += 1
                 distance_counter = self.distances_to_goal[i] - self.distances_to_goal[j]

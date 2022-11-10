@@ -27,10 +27,9 @@ class DifferentialOrthogonalExponential(Controller):
         # print("Path curvature :" + str(path_curvature))
 
         command_linear_velocity = self.maximum_linear_velocity * np.exp(-self.gain_path_curvature_linear * path_curvature -
-                                                                        -self.gain_distance_to_goal_linear / self.distance_to_goal)
+                                                                        self.gain_distance_to_goal_linear / self.distance_to_goal)
         command_linear_velocity = np.clip(command_linear_velocity, self.minimum_linear_velocity, self.maximum_linear_velocity)
-        #return command_linear_velocity
-        return 0.2
+        return command_linear_velocity
 
     def wrap2pi(self, angle):
         if angle <= np.pi and angle >= -np.pi:
