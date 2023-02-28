@@ -51,6 +51,7 @@ class Path:
         # self.curvatures = np.sqrt(np.square(curvatures_list[0]) + np.square(curvatures_list[1]))
 
     def compute_look_ahead_curvatures(self, look_ahead_distance=1.0):
+        self.look_ahead_distance_counter_array = np.zeros(self.n_poses)
         for i in range(0, self.n_poses-1):
             path_iterator = 0
             look_ahead_distance_counter = 0
@@ -59,11 +60,11 @@ class Path:
                 if i + path_iterator + 1 == self.n_poses:
                     break
                 path_curvature_sum += np.abs(self.curvatures[i + path_iterator])
-                look_ahead_distance_counter += self.distances_to_goal[i + path_iterator] - \
-                                               self.distances_to_goal[i + path_iterator + 1]
+                look_ahead_distance_counter += np.abs(self.distances_to_goal[i + path_iterator] - \
+                                               self.distances_to_goal[i + path_iterator + 1])
                 path_iterator += 1
             self.look_ahead_curvatures[i] = path_curvature_sum
-
+            self.look_ahead_distance_counter_array[i] = look_ahead_distance_counter
     def compute_distances_to_goal(self):
         distance_to_goal = 0
         for i in range(self.n_poses-1, 0, -1):
@@ -94,10 +95,10 @@ class Path:
             path_to_world_tf[1, 2] = self.poses[i, 1]
             self.world_to_path_tfs_array[i, :, :] = np.linalg.inv(path_to_world_tf)
 
-    def compute_metrics(self):
-        self.compute_curvatures()
-        self.compute_look_ahead_curvatures()
+    def compute_metrics(self, path_look_ahead_distance):
         self.compute_distances_to_goal()
+        self.compute_curvatures()
+        self.compute_look_ahead_curvatures(path_look_ahead_distance)
         self.compute_angles()
         self.compute_world_to_path_frame_tfs()
         return None
