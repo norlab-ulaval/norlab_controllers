@@ -1,4 +1,5 @@
 from norlabcontrollib.controllers.differential_orthogonal_exponential import DifferentialOrthogonalExponential
+from norlabcontrollib.controllers.stochastic_linear_mpc import StochasticLinearMPC
 import yaml
 
 class ControllerFactory:
@@ -8,6 +9,8 @@ class ControllerFactory:
 
             if yaml_params['controller_name'] == 'DifferentialOrthogonalExponential':
                 controller = DifferentialOrthogonalExponential(yaml_params)
+            elif yaml_params['controller_name'] == 'StochasticLinearMPC':
+                controller = StochasticLinearMPC(yaml_params)
 
             else:
                 raise RuntimeError("Undefined controller, please specify a valid controller name")
