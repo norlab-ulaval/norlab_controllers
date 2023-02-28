@@ -103,8 +103,9 @@ class Path:
         self.compute_world_to_path_frame_tfs()
         return None
 
-    def compute_orthogonal_projection(self, pose):
-        orthogonal_projection_dist, orthogonal_projection_id = self.pose_kdtree.query(pose[:2])
-        return orthogonal_projection_dist, orthogonal_projection_id
+    def compute_orthogonal_projection(self, pose, last_projection_id, query_knn, query_radius):
+        orthogonal_projection_dists, orthogonal_projection_ids = self.pose_kdtree.query(pose[:2], k=query_knn, distance_upper_bound=query_radius)
+        # orthogonal_projection_dists, orthogonal_projection_ids = self.pose_kdtree.query_ball_point(pose[:2], query_radius, return_sorted=False)
+        return orthogonal_projection_dists, orthogonal_projection_ids
 
 # TODO: find a way to split path into multiple directional paths to switch robot direction
