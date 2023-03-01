@@ -32,6 +32,10 @@ class StochasticLinearMPC(Controller):
         self.constraint_tolerance = parameter_map['constraint_tolerance']
         self.prob_safety_level = parameter_map['prob_safety_level']
         self.initial_state_stdev = parameter_map['initial_state_stdev']
+        self.initial_state_covariance = np.eye(3) * self.initial_state_stdev**2
+
+        self.previous_input_array = np.zeros((self.horizon_length, 3))
+        self.previous_input_array[:, 0] = self.maximum_linear_velocity/2
 
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
@@ -43,6 +47,9 @@ class StochasticLinearMPC(Controller):
 
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
+        self.last_path_pose_id = 0
+        self.orthogonal_projection_ids_horizon = np.zeros(self.horizon_length)
+        self.orthogonal_projection_dists_horizon = np.zeros(self.horizon_length)
 
         self.full_body_blr_model = FullBodySlipBayesianLinearRegression(1, 1, 3, self.a_param_init, self.b_param_init,
                                                                         self.param_variance_init, self.variance_init,
@@ -54,75 +61,45 @@ class StochasticLinearMPC(Controller):
         self.path = new_path
         return None
 
-    # def precompute_probalistic_limits(self):
 
+
+    def predict_horizon(self, init_state, input_array):
+        prediction_means, prediction_covariances = self.full_body_blr_model.predict_horizon_from_body_idd_vels(input_array, init_state, self.initial_state_covariance)
+        return prediction_means, prediction_covariances
+
+    def compute_orthogonal_projections(self, prediction_means):
+        orthogonal_projection_dists, orthogonal_projection_ids = self.path.pose_kdtree.query(prediction_means[:2, :].T, k=self.query_knn, distance_upper_bound=self.query_radius)
+        for i in range(0, self.horizon_length):
+            for j in range(0, orthogonal_projection_ids.shape[1]):
+                if np.abs(orthogonal_projection_ids[i, j] - self.last_path_pose_id) <= self.id_window_size:
+                    self.orthogonal_projection_ids_horizon[i] = orthogonal_projection_ids[i, j]
+                    self.orthogonal_projection_dists_horizon[i] = orthogonal_projection_dists[i, j]
+                    break
+        # self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(
+        #     state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
+        # for i in range(0, self.orthogonal_projection_ids.shape[0]):
+        #     if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
+        #         self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
+        #         self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
+        #         break
+
+    def compute_prediction_errors(self, prediction_means):
 
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
         return None
 
-    def compute_linear_velocity(self, orthogonal_projection_id):
-
-        self.path_curvature = self.path.look_ahead_curvatures[orthogonal_projection_id]
-        self.look_ahead_distance = self.path.look_ahead_distance_counter_array[orthogonal_projection_id]
-
-        # print("Distance to goal :" + str(self.distance_to_goal))
-        # print("Path curvature :" + str(path_curvature))
-
-        command_linear_velocity = self.maximum_linear_velocity * np.exp(-self.gain_path_curvature_linear * self.path_curvature -
-                                                                        self.gain_distance_to_goal_linear / self.distance_to_goal)
-        command_linear_velocity = np.clip(command_linear_velocity, self.minimum_linear_velocity, self.maximum_linear_velocity)
-
-        if not self.path.going_forward:
-            command_linear_velocity = -command_linear_velocity
-        return command_linear_velocity
-
-    def wrap2pi(self, angle):
-        if angle <= np.pi and angle >= -np.pi:
-            return (angle)
-        elif angle < -np.pi:
-            return (self.wrap2pi(angle + 2 * np.pi))
-        else:
-            return (self.wrap2pi(angle - 2 * np.pi))
-
-    def apply_tf(self, state, tf):
-        homo_state = np.ones(3)
-        homo_state[0] = state[0]
-        homo_state[1] = state[1]
-        homo_state_transformed =  tf @ homo_state
-        return homo_state_transformed[:2]
-    def compute_angular_velocity(self, state, orthogonal_projection_id):
-        if not self.path.going_forward:
-            if state[5] >= 0:
-                self.current_yaw = -np.pi + state[5]
-            else:
-                self.current_yaw = np.pi + state[5]
-        else:
-            self.current_yaw = state[5]
-        self.projection_pose_path_frame = self.apply_tf(state[:2],
-                                                        self.path.world_to_path_tfs_array[orthogonal_projection_id])
-
-        self.target_exponential_tangent_angle = np.arctan(-self.gain_path_convergence * self.projection_pose_path_frame[1])
-
-        self.robot_yaw_path_frame = self.wrap2pi(self.current_yaw - self.path.angles[orthogonal_projection_id])
-
-        self.error_angle = self.target_exponential_tangent_angle - self.robot_yaw_path_frame
-
-        # print("yaw :" + str(state[5]))
-        # print("error_angle :" + str(error_angle))
-
-        command_angular_velocity = self.gain_proportional_angular * self.error_angle
-        command_angular_velocity = np.clip(command_angular_velocity, -self.maximum_angular_velocity, self.maximum_angular_velocity)
-        return command_angular_velocity
-    #TODO: Possibly need for wrap2pi here
-
     def compute_command_vector(self, state):
-        # print("state :", state)
-        self.orthogonal_projection_dist, self.orthogonal_projection_id = self.path.compute_orthogonal_projection(state[:2])
-        self.compute_distance_to_goal(state, self.orthogonal_projection_id)
-        command_linear_velocity = self.compute_linear_velocity(self.orthogonal_projection_id)
-        command_angular_velocity = self.compute_angular_velocity(state, self.orthogonal_projection_id)
-        return np.array([command_linear_velocity, command_angular_velocity])
+        prediction_means, prediction_covariances = self.predict_horizon(state, self.previous_input_array)
+        self.compute_orthogonal_projections(prediction_means)
+
+        # SMPC pipeline
+        # compute prediction mean and uncertainty
+        # compute prediction orthogonal prediction
+        # compute prediction cost
+        # define optimization problem
+
+        # return np.array([command_linear_velocity, command_angular_velocity])
 
         # TODO: Currently set up as a proportional controller for angular velocity control, investigate the need to use derivative component
