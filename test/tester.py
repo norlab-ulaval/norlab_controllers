@@ -12,7 +12,8 @@ test_path.compute_metrics(controller.path_look_ahead_distance)
 
 controller.update_path(test_path)
 
-
+init_state = np.zeros(3)
+controller.compute_command_vector(init_state)
 
 print('test')
 

@@ -6,6 +6,9 @@ class Path:
     def __init__(self, poses):
         self.forward_direction = True
         self.poses = poses
+        self.planar_poses = np.zeros((poses.shape[0], 3))
+        self.planar_poses[:, 0] = poses[:, 0]
+        self.planar_poses[:, 1] = poses[:, 1]
         self.n_poses = self.poses.shape[0]
         self.pose_kdtree = KDTree(poses[:, :2])
 
@@ -15,6 +18,7 @@ class Path:
         self.angles = np.zeros(self.n_poses)
         self.angles_spatial_window = 0.25
         self.world_to_path_tfs_array = np.ndarray((self.n_poses,3,3))
+        self.path_to_world_tfs_array = np.ndarray((self.n_poses,3,3))
     def compute_curvatures(self):
         first_derivative_x = np.zeros(self.n_poses)
         first_derivative_y = np.zeros(self.n_poses)
@@ -82,6 +86,7 @@ class Path:
                 j += 1
                 distance_counter = self.distances_to_goal[i] - self.distances_to_goal[j]
             self.angles[i] = np.arctan2(self.poses[j, 1] - self.poses[i, 1], self.poses[j, 0] - self.poses[i, 0])
+            self.planar_poses[i, 2] = self.angles[i]
             distance_counter = 0
 
     def compute_world_to_path_frame_tfs(self):
@@ -93,6 +98,7 @@ class Path:
             path_to_world_tf[1, 0] = np.sin(self.angles[i])
             path_to_world_tf[1, 1] = np.cos(self.angles[i])
             path_to_world_tf[1, 2] = self.poses[i, 1]
+            self.path_to_world_tfs_array[i, :, :] = path_to_world_tf
             self.world_to_path_tfs_array[i, :, :] = np.linalg.inv(path_to_world_tf)
 
     def compute_metrics(self, path_look_ahead_distance):
@@ -103,8 +109,9 @@ class Path:
         self.compute_world_to_path_frame_tfs()
         return None
 
-    def compute_orthogonal_projection(self, pose):
-        orthogonal_projection_dist, orthogonal_projection_id = self.pose_kdtree.query(pose[:2])
-        return orthogonal_projection_dist, orthogonal_projection_id
+    def compute_orthogonal_projection(self, pose, last_projection_id, query_knn, query_radius):
+        orthogonal_projection_dists, orthogonal_projection_ids = self.pose_kdtree.query(pose[:2], k=query_knn, distance_upper_bound=query_radius)
+        # orthogonal_projection_dists, orthogonal_projection_ids = self.pose_kdtree.query_ball_point(pose[:2], query_radius, return_sorted=False)
+        return orthogonal_projection_dists, orthogonal_projection_ids
 
 # TODO: find a way to split path into multiple directional paths to switch robot direction

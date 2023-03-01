@@ -26,9 +26,12 @@ class StochasticLinearMPC(Controller):
         self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.input_cost_linear = parameter_map['input_cost_linear']
         self.input_cost_angular = parameter_map['input_cost_angular']
-        self.input_cost_matrix = np.eye(2)
+        self.input_cost_matrix = np.zeros((3,3))
         self.input_cost_matrix[0,0] = self.input_cost_linear
-        self.input_cost_matrix[1,1] = self.input_cost_angular
+        self.input_cost_matrix[2,2] = self.input_cost_angular
+        self.ancillary_gain_linear = parameter_map['ancillary_gain_linear']
+        self.ancillary_gain_angular = parameter_map['ancillary_gain_angular']
+        self.ancillary_gain_array = np.array([self.ancillary_gain_linear, self.ancillary_gain_angular]).reshape(2, 1)
         self.constraint_tolerance = parameter_map['constraint_tolerance']
         self.prob_safety_level = parameter_map['prob_safety_level']
         self.initial_state_stdev = parameter_map['initial_state_stdev']
@@ -48,8 +51,9 @@ class StochasticLinearMPC(Controller):
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
         self.last_path_pose_id = 0
-        self.orthogonal_projection_ids_horizon = np.zeros(self.horizon_length)
+        self.orthogonal_projection_ids_horizon = np.zeros(self.horizon_length).astype('int32')
         self.orthogonal_projection_dists_horizon = np.zeros(self.horizon_length)
+        self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
 
         self.full_body_blr_model = FullBodySlipBayesianLinearRegression(1, 1, 3, self.a_param_init, self.b_param_init,
                                                                         self.param_variance_init, self.variance_init,
@@ -57,14 +61,16 @@ class StochasticLinearMPC(Controller):
         self.trained_model_path = parameter_map['trained_model_path']
         self.full_body_blr_model.load_params(self.trained_model_path)
 
+        self.optimizer = cs.Opti()
+
     def update_path(self, new_path):
         self.path = new_path
         return None
 
-
-
     def predict_horizon(self, init_state, input_array):
         prediction_means, prediction_covariances = self.full_body_blr_model.predict_horizon_from_body_idd_vels(input_array, init_state, self.initial_state_covariance)
+        # for i in range(0, self.horizon_length):
+        #     self.prediction_input_covariances[:, :, i] = self.ancillary_gain_array @ prediction_covariances[:, :, i] @ self.ancillary_gain_array.T
         return prediction_means, prediction_covariances
 
     def compute_orthogonal_projections(self, prediction_means):
@@ -72,7 +78,7 @@ class StochasticLinearMPC(Controller):
         for i in range(0, self.horizon_length):
             for j in range(0, orthogonal_projection_ids.shape[1]):
                 if np.abs(orthogonal_projection_ids[i, j] - self.last_path_pose_id) <= self.id_window_size:
-                    self.orthogonal_projection_ids_horizon[i] = orthogonal_projection_ids[i, j]
+                    self.orthogonal_projection_ids_horizon[i] = int(orthogonal_projection_ids[i, j])
                     self.orthogonal_projection_dists_horizon[i] = orthogonal_projection_dists[i, j]
                     break
         # self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(
@@ -83,16 +89,33 @@ class StochasticLinearMPC(Controller):
         #         self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
         #         break
 
-    def compute_prediction_errors(self, prediction_means):
 
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
         return None
 
+    def compute_cost(self, prediction_means, prediction_covariances, input_array):
+        prediction_cost = 0
+        for i in range(0, self.horizon_length):
+            state_error = prediction_means[:, i] - self.path.planar_poses[self.orthogonal_projection_ids_horizon[i]]
+            state_cost_timestep = state_error @ self.state_cost_matrix @ state_error.T + np.trace(self.state_cost_matrix @ prediction_covariances[:, :, i])
+
+            input_error = input_array[i, :] - self.previous_input_array[i, :]
+            input_cost_timestep = input_error @ self.input_cost_matrix @ input_error.T
+            # TODO: Possibly implement ancillary input coriances to add to cost
+            prediction_cost += state_cost_timestep + input_cost_timestep
+        return prediction_cost
+
+    # def solve_prediction_optimization(self, init_state):
+
+
     def compute_command_vector(self, state):
+        input_array = self.previous_input_array
         prediction_means, prediction_covariances = self.predict_horizon(state, self.previous_input_array)
         self.compute_orthogonal_projections(prediction_means)
+        prediction_cost = self.compute_cost(prediction_means, prediction_covariances, input_array)
+        print('test')
 
         # SMPC pipeline
         # compute prediction mean and uncertainty

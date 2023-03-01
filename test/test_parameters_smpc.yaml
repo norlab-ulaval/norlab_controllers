@@ -17,6 +17,8 @@ state_cost_translational: 1
 state_cost_rotational: 1
 input_cost_linear: 1
 input_cost_angular: 1
+ancillary_gain_linear: 1
+ancillary_gain_angular: 1
 constraint_tolerance: 1e-8
 trained_model_path: '../norlabcontrollib/models/trained_params/husky/grand_salon/slip_blr/'
 prob_safety_level: 0.955
