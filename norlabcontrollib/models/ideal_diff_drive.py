@@ -11,8 +11,8 @@ class Ideal_diff_drive:
         self.jacobian_3x3 = r * np.array([[0.5, 0.5],
                                           [0.0, 0.0],
                                           [-1/(baseline), 1/(baseline)]])
-        self.inv_jacobian = np.linalg.inv(self.jacobian)
 
+        self.inv_jacobian = np.linalg.inv(self.jacobian)
         self.rotation_body_to_world = np.eye(2)
         self.body_vel_world_3d = np.zeros(6)
         self.body_vel_world_2d = np.zeros(3)

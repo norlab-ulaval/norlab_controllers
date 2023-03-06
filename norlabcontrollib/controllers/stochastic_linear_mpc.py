@@ -2,7 +2,7 @@ from norlabcontrollib.controllers.controller import Controller
 from norlabcontrollib.models.blr_slip import FullBodySlipBayesianLinearRegression
 
 import numpy as np
-import casadi as cs
+from scipy.optimize import minimize
 
 class StochasticLinearMPC(Controller):
     def __init__(self, parameter_map):
@@ -24,11 +24,8 @@ class StochasticLinearMPC(Controller):
         self.state_cost_matrix[0,0] = self.state_cost_translational
         self.state_cost_matrix[1,1] = self.state_cost_translational
         self.state_cost_matrix[2,2] = self.state_cost_rotational
-        self.input_cost_linear = parameter_map['input_cost_linear']
-        self.input_cost_angular = parameter_map['input_cost_angular']
-        self.input_cost_matrix = np.zeros((3,3))
-        self.input_cost_matrix[0,0] = self.input_cost_linear
-        self.input_cost_matrix[2,2] = self.input_cost_angular
+        self.input_cost_wheel = parameter_map['input_cost_wheel']
+        self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
         self.ancillary_gain_linear = parameter_map['ancillary_gain_linear']
         self.ancillary_gain_angular = parameter_map['ancillary_gain_angular']
         self.ancillary_gain_array = np.array([self.ancillary_gain_linear, self.ancillary_gain_angular]).reshape(2, 1)
@@ -36,9 +33,6 @@ class StochasticLinearMPC(Controller):
         self.prob_safety_level = parameter_map['prob_safety_level']
         self.initial_state_stdev = parameter_map['initial_state_stdev']
         self.initial_state_covariance = np.eye(3) * self.initial_state_stdev**2
-
-        self.previous_input_array = np.zeros((self.horizon_length, 3))
-        self.previous_input_array[:, 0] = self.maximum_linear_velocity/2
 
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
@@ -61,14 +55,20 @@ class StochasticLinearMPC(Controller):
         self.trained_model_path = parameter_map['trained_model_path']
         self.full_body_blr_model.load_params(self.trained_model_path)
 
-        self.optimizer = cs.Opti()
+        previous_body_vel_input_array = np.zeros((2, self.horizon_length))
+        previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
+        self.previous_input_array = self.full_body_blr_model.compute_wheel_vels(previous_body_vel_input_array)
 
     def update_path(self, new_path):
         self.path = new_path
         return None
 
+    def input_to_body_vel(self, input_array):
+        return self.full_body_blr_model.compute_body_vel(input_array)
+
     def predict_horizon(self, init_state, input_array):
-        prediction_means, prediction_covariances = self.full_body_blr_model.predict_horizon_from_body_idd_vels(input_array, init_state, self.initial_state_covariance)
+        body_vels_horizon = self.input_to_body_vel(input_array)
+        prediction_means, prediction_covariances = self.full_body_blr_model.predict_horizon_from_body_idd_vels(body_vels_horizon, init_state, self.initial_state_covariance)
         # for i in range(0, self.horizon_length):
         #     self.prediction_input_covariances[:, :, i] = self.ancillary_gain_array @ prediction_covariances[:, :, i] @ self.ancillary_gain_array.T
         return prediction_means, prediction_covariances
@@ -95,34 +95,37 @@ class StochasticLinearMPC(Controller):
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
         return None
 
-    def compute_cost(self, prediction_means, prediction_covariances, input_array):
+    def compute_horizon_cost(self, prediction_means, prediction_covariances, input_array):
         prediction_cost = 0
         for i in range(0, self.horizon_length):
             state_error = prediction_means[:, i] - self.path.planar_poses[self.orthogonal_projection_ids_horizon[i]]
             state_cost_timestep = state_error @ self.state_cost_matrix @ state_error.T + np.trace(self.state_cost_matrix @ prediction_covariances[:, :, i])
 
-            input_error = input_array[i, :] - self.previous_input_array[i, :]
+            input_error = input_array[:, i] - self.previous_input_array[:, i]
             input_cost_timestep = input_error @ self.input_cost_matrix @ input_error.T
             # TODO: Possibly implement ancillary input coriances to add to cost
             prediction_cost += state_cost_timestep + input_cost_timestep
         return prediction_cost
 
-    # def solve_prediction_optimization(self, init_state):
+    def predict_then_compute_cost(self, input):
+        # body_vel_array = self.full_body_blr_model.compute_body_vel(input)
+        self.prediction_means, self.prediction_covariances = self.predict_horizon(self.init_state, input)
+        self.compute_orthogonal_projections(self.prediction_means)
+        return self.compute_horizon_cost(self.prediction_means, self.prediction_covariances, input)
 
+    # def compute_prediction_lagrangian(self):
+    # def compution_prediction_gradient(self, prediction_cost):
+    def compute_objective(self, input):
+        # body_vel_array = self.full_body_blr_model.compute_body_vel(input)
+        prediction_means, prediction_covariances = self.predict_horizon(self.init_state, input)
+        self.compute_orthogonal_projections(prediction_means)
+        return self.compute_horizon_cost(prediction_means, prediction_covariances, input)
 
     def compute_command_vector(self, state):
-        input_array = self.previous_input_array
-        prediction_means, prediction_covariances = self.predict_horizon(state, self.previous_input_array)
-        self.compute_orthogonal_projections(prediction_means)
-        prediction_cost = self.compute_cost(prediction_means, prediction_covariances, input_array)
-        print('test')
-
-        # SMPC pipeline
-        # compute prediction mean and uncertainty
-        # compute prediction orthogonal prediction
-        # compute prediction cost
-        # define optimization problem
-
-        # return np.array([command_linear_velocity, command_angular_velocity])
-
-        # TODO: Currently set up as a proportional controller for angular velocity control, investigate the need to use derivative component
+        self.init_state = state
+        # TODO: Compute the objective function gradient
+        # TODO: Linearize for Lagragian = 0
+        # TODO: Solve for delta_s
+        # fun = lambda x: self.compute_objective(x)
+        # optimization_result = minimize(fun, self.previous_input_array, method='BFGS')
+        # return optimization_result.x

@@ -13,8 +13,9 @@ test_path.compute_metrics(controller.path_look_ahead_distance)
 controller.update_path(test_path)
 
 init_state = np.zeros(3)
+controller.init_state = init_state
+# controller.predict_then_compute_cost(controller.previous_input_array)
 controller.compute_command_vector(init_state)
-
 print('test')
 
 # controller.compute_command_vector(np.array([0.0, 0.0, 0.0]))
