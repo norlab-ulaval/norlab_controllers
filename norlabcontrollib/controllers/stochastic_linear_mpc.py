@@ -3,6 +3,7 @@ from norlabcontrollib.models.blr_slip import FullBodySlipBayesianLinearRegressio
 
 import numpy as np
 from scipy.optimize import minimize
+from casadi import *
 
 class StochasticLinearMPC(Controller):
     def __init__(self, parameter_map):
@@ -58,6 +59,8 @@ class StochasticLinearMPC(Controller):
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
         self.previous_input_array = self.full_body_blr_model.compute_wheel_vels(previous_body_vel_input_array)
+        self.nd_input_array = np.zeros((2, self.horizon_length))
+        self.target_trajectory = np.zeros((3, self.horizon_length))
 
     def update_path(self, new_path):
         self.path = new_path
@@ -67,12 +70,36 @@ class StochasticLinearMPC(Controller):
         return self.full_body_blr_model.compute_body_vel(input_array)
 
     def predict_horizon(self, init_state, input_array):
-        body_vels_horizon = self.input_to_body_vel(input_array)
+        body_vels_horizon = self.input_to_body_vel(input_array).T
         prediction_means, prediction_covariances = self.full_body_blr_model.predict_horizon_from_body_idd_vels(body_vels_horizon, init_state, self.initial_state_covariance)
         # for i in range(0, self.horizon_length):
         #     self.prediction_input_covariances[:, :, i] = self.ancillary_gain_array @ prediction_covariances[:, :, i] @ self.ancillary_gain_array.T
         return prediction_means, prediction_covariances
 
+    def compute_orthogonal_projection(self, state):
+        self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(
+            state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
+        for i in range(0, self.orthogonal_projection_ids.shape[0]):
+            if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
+                self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
+                self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
+                break
+        return None
+
+    def compute_desired_trajectory(self, state):
+        self.compute_orthogonal_projection(state)
+        target_displacement = 0
+        target_displacement_rate = self.maximum_linear_velocity / self.rate
+        target_trajectory_path_id = self.orthogonal_projection_id
+        for i in range(1, self.horizon_length):
+            target_displacement += target_displacement_rate
+            path_displacement = self.path.distances_to_goal[target_trajectory_path_id] - self.path.distances_to_goal[target_trajectory_path_id + 1]
+            if target_displacement >= path_displacement / 2:
+                target_trajectory_path_id += 1
+                target_displacement = -path_displacement / 2
+            self.target_trajectory[:2, i] = self.path.poses[target_trajectory_path_id]
+            self.target_trajectory[2, i] = self.path.angles[target_trajectory_path_id]
+        return None
     def compute_orthogonal_projections(self, prediction_means):
         orthogonal_projection_dists, orthogonal_projection_ids = self.path.pose_kdtree.query(prediction_means[:2, :].T, k=self.query_knn, distance_upper_bound=self.query_radius)
         for i in range(0, self.horizon_length):
@@ -117,15 +144,23 @@ class StochasticLinearMPC(Controller):
     # def compution_prediction_gradient(self, prediction_cost):
     def compute_objective(self, input):
         # body_vel_array = self.full_body_blr_model.compute_body_vel(input)
-        prediction_means, prediction_covariances = self.predict_horizon(self.init_state, input)
+        self.nd_input_array[0, :] = input[:self.horizon_length]
+        self.nd_input_array[1, :] = input[self.horizon_length:]
+        prediction_means, prediction_covariances = self.predict_horizon(self.init_state, self.nd_input_array)
         self.compute_orthogonal_projections(prediction_means)
-        return self.compute_horizon_cost(prediction_means, prediction_covariances, input)
+        cost = self.compute_horizon_cost(prediction_means, prediction_covariances, self.nd_input_array)
+        return cost
+
+    # def compute_objective_gradient(self, input):
+
 
     def compute_command_vector(self, state):
         self.init_state = state
         # TODO: Compute the objective function gradient
         # TODO: Linearize for Lagragian = 0
         # TODO: Solve for delta_s
+        self.compute_objective(self.previous_input_array)
         # fun = lambda x: self.compute_objective(x)
-        # optimization_result = minimize(fun, self.previous_input_array, method='BFGS')
+        # optimization_result = minimize(fun, self.previous_input_array.flatten(), method='SLSQP')
+        # print(optimization_result.x)
         # return optimization_result.x
