@@ -19,8 +19,13 @@ controller.update_path(test_path)
 #
 init_state = np.zeros(3)
 init_state[1] = 0.5
+# init_state[2] = -0.5
 # init_state[1] = 2
+# init_state[0] = 9.703779
+# init_state[1] = 5.218897
+# init_state[2] = 1.4497365919889573
 controller.init_state = init_state
+# controller.last_path_pose_id = 100
 controller.compute_desired_trajectory(init_state)
 print(controller.target_trajectory)
 # controller.predict_then_compute_cost(controller.previous_input_array)
@@ -50,7 +55,10 @@ R[0, 0] = cas.cos(casadi_x[2])
 R[1, 1] = cas.cos(casadi_x[2])
 R[0, 1] = -cas.sin((casadi_x[2]))
 R[1, 0] = cas.sin((casadi_x[2]))
-x_k = casadi_x + cas.mtimes(R, cas.mtimes(J, casadi_u)) / controller.rate
+
+R_inv = cas.inv(R)
+
+x_k = casadi_x + cas.mtimes(R_inv, cas.mtimes(J, casadi_u)) / controller.rate
 
 single_step_pred = cas.Function('single_step_pred', [casadi_x, casadi_u], [x_k])
 x_0 = cas.SX(3, 1)
@@ -112,6 +120,32 @@ optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", optim_problem
 
 # optim_problem_solution = optim_problem_solver(x0=controller.previous_input_array.flatten())
 optim_problem_solution = optim_problem_solver(x0=np.zeros(controller.horizon_length*2))
+optim_control_input = optim_problem_solution['x']
+optim_trajectory = horizon_pred(optim_control_input)
+optim_trajectory_array = np.zeros((3, controller.horizon_length))
+optim_trajectory_array[0, :] = optim_trajectory[0, :]
+optim_trajectory_array[1, :] = optim_trajectory[1, :]
+optim_trajectory_array[2, :] = optim_trajectory[2, :]
+test_input_array = np.zeros(2*controller.horizon_length)
+test_input_array[controller.horizon_length:] = 5.0
+test_input_array[controller.horizon_length:] = 5.0
+test_trajectory = horizon_pred(test_input_array)
+test_trajectory_array = np.zeros((3, controller.horizon_length))
+test_trajectory_array[0, :] = test_trajectory[0, :]
+test_trajectory_array[1, :] = test_trajectory[1, :]
+test_trajectory_array[2, :] = test_trajectory[2, :]
+
+# TODO : investigate why it is constantly turning
+
+import matplotlib.pyplot as plt
+plt.scatter(controller.target_trajectory[1, :], controller.target_trajectory[0, :], s=10)
+plt.scatter(optim_trajectory_array[1, :], optim_trajectory_array[0, :], s=10)
+# plt.scatter(test_trajectory_array[1, :], test_trajectory_array[0, :], s=10)
+plt.xlim(-2,2)
+plt.ylim(-2,2)
+# plt.scatter()
+plt.show()
+
 
 print('test')
 
