@@ -18,7 +18,7 @@ test_path.compute_metrics(controller.path_look_ahead_distance)
 controller.update_path(test_path)
 #
 init_state = np.zeros(3)
-init_state[1] = 0.2
+init_state[1] = 0.5
 # init_state[1] = 2
 controller.init_state = init_state
 controller.compute_desired_trajectory(init_state)
@@ -73,10 +73,10 @@ input_cost_matrix[:, :] = controller.input_cost_matrix
 prediction_cost = cas.SX(0)
 
 for i in range(1, controller.horizon_length):
-    x_horizon_list.append(single_step_pred(x_horizon_list[i-1], u_horizon[i, :]))
+    x_horizon_list.append(single_step_pred(x_horizon_list[i-1], u_horizon[i-1, :]))
     x_error = x_ref[i]- x_horizon_list[i]
     state_cost = cas.mtimes(cas.mtimes(x_error.T, state_cost_matrix), x_error)
-    u_error = u_ref[i, :] - u_horizon[i, :]
+    u_error = u_ref[i-1, :] - u_horizon[i-1, :]
     input_cost = cas.mtimes(cas.mtimes(u_error, input_cost_matrix), u_error.T)
     prediction_cost = prediction_cost + state_cost + input_cost
 
@@ -110,7 +110,8 @@ solver = cas.nlpsol('solver', 'ipopt', prob)
 opts = {}
 optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", optim_problem)
 
-optim_problem_solution = optim_problem_solver(x0=controller.previous_input_array.flatten())
+# optim_problem_solution = optim_problem_solver(x0=controller.previous_input_array.flatten())
+optim_problem_solution = optim_problem_solver(x0=np.zeros(controller.horizon_length*2))
 
 print('test')
 
