@@ -18,6 +18,7 @@ test_path.compute_metrics(controller.path_look_ahead_distance)
 controller.update_path(test_path)
 #
 init_state = np.zeros(3)
+init_state[1] = 0.2
 # init_state[1] = 2
 controller.init_state = init_state
 controller.compute_desired_trajectory(init_state)
@@ -52,9 +53,13 @@ R[1, 0] = cas.sin((casadi_x[2]))
 x_k = casadi_x + cas.mtimes(R, cas.mtimes(J, casadi_u)) / controller.rate
 
 single_step_pred = cas.Function('single_step_pred', [casadi_x, casadi_u], [x_k])
-x_0 = cas.SX.sym('x_0', 3)
+x_0 = cas.SX(3, 1)
+x_0[:] = init_state
 x_horizon_list = [x_0]
-u_horizon = cas.SX.sym('u_horizon', controller.horizon_length, 2)
+u_horizon_flat = cas.SX.sym('u_horizon_flat',2*controller.horizon_length)
+u_horizon = cas.SX(controller.horizon_length, 2)
+u_horizon[:, 0] = u_horizon_flat[:controller.horizon_length]
+u_horizon[:, 1] = u_horizon_flat[controller.horizon_length:]
 
 x_ref = cas.DM.zeros(3, controller.horizon_length)
 x_ref[:, :] = controller.target_trajectory
@@ -73,11 +78,11 @@ for i in range(1, controller.horizon_length):
     state_cost = cas.mtimes(cas.mtimes(x_error.T, state_cost_matrix), x_error)
     u_error = u_ref[i, :] - u_horizon[i, :]
     input_cost = cas.mtimes(cas.mtimes(u_error, input_cost_matrix), u_error.T)
-    prediction_cost += state_cost + input_cost
+    prediction_cost = prediction_cost + state_cost + input_cost
 
 x_horizon = cas.hcat(x_horizon_list)
-horizon_pred = cas.Function('horizon_pred', [x_0, u_horizon], [x_horizon])
-pred_cost = cas.Function('pred_cost', [x_0, u_horizon], [prediction_cost])
+horizon_pred = cas.Function('horizon_pred', [u_horizon_flat], [x_horizon])
+pred_cost = cas.Function('pred_cost', [u_horizon_flat], [prediction_cost])
 
 casadi_single_step_pred = single_step_pred(init_state, controller.previous_input_array[:, 0])
 idd_single_step_pred = ideal_dd.predict(idd_state, controller.previous_input_array[:, 0])
@@ -90,17 +95,22 @@ t_idd = t1 - t0
 #
 # f = Function('f', [u], [x_k])
 t0 = time.time()
-# casadi_idd_pred = horizon_pred(init_state, controller.previous_input_array.T)
-prediction_cost = pred_cost(init_state, controller.previous_input_array.T)
+# casadi_idd_pred = horizon_pred(controller.previous_input_array.T)
+test_pred_cost = pred_cost(controller.previous_input_array.flatten())
 t1 = time.time()
 t_cas = t1 - t0
 
+# Declare variables
+x = cas.SX.sym("x",2)
+f = x[0]**2 + x[1]**2 # objective
+g = x[0]+x[1]-10      # constraint
+prob = {'x':x, 'f':f}
+optim_problem = {"f":prediction_cost, "x":u_horizon_flat}
+solver = cas.nlpsol('solver', 'ipopt', prob)
+opts = {}
+optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", optim_problem)
 
-
-#
-print('time idd : ', t_idd)
-print(idd_state)
-print('time_cas : ', t_cas)
-print(prediction_cost)
+optim_problem_solution = optim_problem_solver(x0=controller.previous_input_array.flatten())
 
 print('test')
+
