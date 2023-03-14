@@ -1,9 +1,10 @@
 from norlabcontrollib.controllers.controller import Controller
 from norlabcontrollib.models.blr_slip import FullBodySlipBayesianLinearRegression
+from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
 
 import numpy as np
 from scipy.optimize import minimize
-from casadi import *
+import casadi as cas
 
 class StochasticLinearMPC(Controller):
     def __init__(self, parameter_map):
@@ -50,6 +51,7 @@ class StochasticLinearMPC(Controller):
         self.orthogonal_projection_dists_horizon = np.zeros(self.horizon_length)
         self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
 
+        self.ideal_diff_drive = Ideal_diff_drive(self.wheel_radius, self.baseline, 1/self.rate)
         self.full_body_blr_model = FullBodySlipBayesianLinearRegression(1, 1, 3, self.a_param_init, self.b_param_init,
                                                                         self.param_variance_init, self.variance_init,
                                                                         self.baseline, self.wheel_radius, 1/self.rate, self.kappa_param)
@@ -61,6 +63,66 @@ class StochasticLinearMPC(Controller):
         self.previous_input_array = self.full_body_blr_model.compute_wheel_vels(previous_body_vel_input_array)
         self.nd_input_array = np.zeros((2, self.horizon_length))
         self.target_trajectory = np.zeros((3, self.horizon_length))
+
+        ############################ CASADI optimal control test
+        self.x0 = cas.SX(3, 1)
+        self.u = cas.SX.sym('u', self.horizon_length, 2)
+        self.R = cas.SX.eye(3)
+        self.R[0, 0] = cas.cos(self.x0[2, 0])
+        self.R[1, 1] = cas.cos(self.x0[2, 0])
+        self.R[0, 1] = -cas.sin((self.x0[2, 0]))
+        self.R[1, 0] = cas.sin((self.x0[2, 0]))
+        self.J = cas.SX(3, 2)
+        self.J[0, :] = self.wheel_radius / 2
+        self.J[1, :] = 0
+        self.J[2, 0] = -self.wheel_radius / self.baseline
+        self.J[2, 1] = self.wheel_radius / self.baseline
+
+        self.casadi_x = cas.SX.sym('x', 3)
+        self.casadi_u = cas.SX.sym('u', 2)
+
+        self.R[0, 0] = cas.cos(self.casadi_x[2])
+        self.R[1, 1] = cas.cos(self.casadi_x[2])
+        self.R[0, 1] = -cas.sin((self.casadi_x[2]))
+        self.R[1, 0] = cas.sin((self.casadi_x[2]))
+        self.R_inv = self.R.T
+
+        x_k = self.casadi_x + cas.mtimes(self.R_inv, cas.mtimes(self.J, self.casadi_u)) / self.rate
+        single_step_pred = cas.Function('single_step_pred', [self.casadi_x, self.casadi_u], [x_k])
+
+        self.x_0 = cas.SX(3, 1)
+        self.x_horizon_list = [self.x_0]
+        self.u_horizon_flat = cas.SX.sym('u_horizon_flat', 2 * self.horizon_length)
+        self.u_horizon = cas.SX(self.horizon_length, 2)
+        self.u_horizon[:, 0] = self.u_horizon_flat[:self.horizon_length]
+        self.u_horizon[:, 1] = self.u_horizon_flat[self.horizon_length:]
+
+        self.x_ref = cas.DM.zeros(3, self.horizon_length)
+        self.x_ref[:, :] = self.target_trajectory
+        self.cas_state_cost_matrix = cas.DM.zeros(3, 3)
+        self.cas_state_cost_matrix[:, :] = self.state_cost_matrix
+        self.u_ref = cas.DM.zeros(2, self.horizon_length)
+        self.u_ref[:, :] = self.previous_input_array
+        self.u_ref = self.u_ref.T
+        self.cas_input_cost_matrix = cas.DM.zeros(2, 2)
+        self.cas_input_cost_matrix[:, :] = self.input_cost_matrix
+        self.prediction_cost = cas.SX(0)
+
+        for i in range(1, self.horizon_length):
+            self.x_horizon_list.append(single_step_pred(self.x_horizon_list[i - 1], self.u_horizon[i - 1, :]))
+            x_error = self.x_ref[i] - self.x_horizon_list[i]
+            state_cost = cas.mtimes(cas.mtimes(x_error.T, self.cas_state_cost_matrix), x_error)
+            u_error = self.u_ref[i - 1, :] - self.u_horizon[i - 1, :]
+            input_cost = cas.mtimes(cas.mtimes(u_error, self.cas_input_cost_matrix), u_error.T)
+            self.prediction_cost = self.prediction_cost + state_cost + input_cost
+
+        self.x_horizon = cas.hcat(self.x_horizon_list)
+        self.horizon_pred = cas.Function('horizon_pred', [self.u_horizon_flat], [self.x_horizon])
+        self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
+
+        optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat}
+        self.nlpsol_opts = {'verbose_init': False, 'print_in': False, 'print_out': False, 'print_time': False, 'verbose': False, 'ipopt':{'print_level': 0}}
+        self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", optim_problem, self.nlpsol_opts)
 
     def update_path(self, new_path):
         self.path = new_path
@@ -77,8 +139,7 @@ class StochasticLinearMPC(Controller):
         return prediction_means, prediction_covariances
 
     def compute_orthogonal_projection(self, state):
-        self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(
-            state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
+        self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
         for i in range(0, self.orthogonal_projection_ids.shape[0]):
             if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
                 self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
@@ -91,7 +152,7 @@ class StochasticLinearMPC(Controller):
         target_displacement = 0
         target_displacement_rate = self.maximum_linear_velocity / self.rate
         target_trajectory_path_id = self.orthogonal_projection_id
-        for i in range(1, self.horizon_length):
+        for i in range(0, self.horizon_length):
             target_displacement += target_displacement_rate
             path_displacement = self.path.distances_to_goal[target_trajectory_path_id] - self.path.distances_to_goal[target_trajectory_path_id + 1]
             if target_displacement >= path_displacement / 2:
@@ -156,10 +217,15 @@ class StochasticLinearMPC(Controller):
 
     def compute_command_vector(self, state):
         self.init_state = state
-        # TODO: Compute the objective function gradient
-        # TODO: Linearize for Lagragian = 0
-        # TODO: Solve for delta_s
-        self.compute_objective(self.previous_input_array)
+        self.compute_desired_trajectory(state)
+        self.x0[:2] = state[:2]
+        self.x_ref[:, :] = self.target_trajectory
+        self.x0[2] = state[5]
+        optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten())['x']
+
+        wheel_input_array = np.array([optim_control_solution[0], optim_control_solution[self.horizon_length]]).reshape(2,1)
+        body_input_array = self.ideal_diff_drive.compute_body_vel(wheel_input_array)
+        return body_input_array
         # fun = lambda x: self.compute_objective(x)
         # optimization_result = minimize(fun, self.previous_input_array.flatten(), method='SLSQP')
         # print(optimization_result.x)
