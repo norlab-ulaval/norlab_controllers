@@ -60,7 +60,7 @@ class StochasticLinearMPC(Controller):
 
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
-        self.previous_input_array = self.full_body_blr_model.compute_wheel_vels(previous_body_vel_input_array)
+        self.previous_input_array = self.ideal_diff_drive.compute_wheel_vels(previous_body_vel_input_array)
         self.nd_input_array = np.zeros((2, self.horizon_length))
         self.target_trajectory = np.zeros((3, self.horizon_length))
 
