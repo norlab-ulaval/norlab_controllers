@@ -52,11 +52,11 @@ class StochasticLinearMPC(Controller):
         self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
 
         self.ideal_diff_drive = Ideal_diff_drive(self.wheel_radius, self.baseline, 1/self.rate)
-        self.full_body_blr_model = FullBodySlipBayesianLinearRegression(1, 1, 3, self.a_param_init, self.b_param_init,
-                                                                        self.param_variance_init, self.variance_init,
-                                                                        self.baseline, self.wheel_radius, 1/self.rate, self.kappa_param)
-        self.trained_model_path = parameter_map['trained_model_path']
-        self.full_body_blr_model.load_params(self.trained_model_path)
+        # self.full_body_blr_model = FullBodySlipBayesianLinearRegression(1, 1, 3, self.a_param_init, self.b_param_init,
+        #                                                                 self.param_variance_init, self.variance_init,
+        #                                                                 self.baseline, self.wheel_radius, 1/self.rate, self.kappa_param)
+        # self.trained_model_path = parameter_map['trained_model_path']
+        # self.full_body_blr_model.load_params(self.trained_model_path)
 
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
