@@ -60,18 +60,13 @@ class StochasticLinearMPC(Controller):
 
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
-        self.previous_input_array = self.ideal_diff_drive.compute_wheel_vels(previous_body_vel_input_array)
+        # self.previous_input_array = self.ideal_diff_drive.compute_wheel_vels(previous_body_vel_input_array)
+        self.previous_input_array = np.zeros((2, self.horizon_length))
         self.nd_input_array = np.zeros((2, self.horizon_length))
         self.target_trajectory = np.zeros((3, self.horizon_length))
 
         ############################ CASADI optimal control test
-        self.x0 = cas.SX(3, 1)
-        self.u = cas.SX.sym('u', self.horizon_length, 2)
         self.R = cas.SX.eye(3)
-        self.R[0, 0] = cas.cos(self.x0[2, 0])
-        self.R[1, 1] = cas.cos(self.x0[2, 0])
-        self.R[0, 1] = -cas.sin((self.x0[2, 0]))
-        self.R[1, 0] = cas.sin((self.x0[2, 0]))
         self.J = cas.SX(3, 2)
         self.J[0, :] = self.wheel_radius / 2
         self.J[1, :] = 0
@@ -88,17 +83,22 @@ class StochasticLinearMPC(Controller):
         self.R_inv = self.R.T
 
         x_k = self.casadi_x + cas.mtimes(self.R_inv, cas.mtimes(self.J, self.casadi_u)) / self.rate
-        single_step_pred = cas.Function('single_step_pred', [self.casadi_x, self.casadi_u], [x_k])
+        self.single_step_pred = cas.Function('single_step_pred', [self.casadi_x, self.casadi_u], [x_k])
 
-        self.x_0 = cas.SX(3, 1)
+        self.x_0 = cas.SX.sym('x_0', 3, 1)
         self.x_horizon_list = [self.x_0]
         self.u_horizon_flat = cas.SX.sym('u_horizon_flat', 2 * self.horizon_length)
         self.u_horizon = cas.SX(self.horizon_length, 2)
         self.u_horizon[:, 0] = self.u_horizon_flat[:self.horizon_length]
         self.u_horizon[:, 1] = self.u_horizon_flat[self.horizon_length:]
 
-        self.x_ref = cas.DM.zeros(3, self.horizon_length)
-        self.x_ref[:, :] = self.target_trajectory
+        # self.x_ref = cas.DM.zeros(3, self.horizon_length)
+        self.x_ref_flat = cas.SX.sym('x_ref', 3 * self.horizon_length)
+        self.x_ref = cas.SX.zeros(3, self.horizon_length)
+        self.x_ref[0, :] = self.x_ref_flat[:self.horizon_length]
+        self.x_ref[1, :] = self.x_ref_flat[self.horizon_length:2 * self.horizon_length]
+        self.x_ref[2, :] = self.x_ref_flat[2 * self.horizon_length:3 * self.horizon_length]
+        # self.x_ref[:, :] = self.target_trajectory
         self.cas_state_cost_matrix = cas.DM.zeros(3, 3)
         self.cas_state_cost_matrix[:, :] = self.state_cost_matrix
         self.u_ref = cas.DM.zeros(2, self.horizon_length)
@@ -109,7 +109,7 @@ class StochasticLinearMPC(Controller):
         self.prediction_cost = cas.SX(0)
 
         for i in range(1, self.horizon_length):
-            self.x_horizon_list.append(single_step_pred(self.x_horizon_list[i - 1], self.u_horizon[i - 1, :]))
+            self.x_horizon_list.append(self.single_step_pred(self.x_horizon_list[i - 1], self.u_horizon[i - 1, :]))
             x_error = self.x_ref[i] - self.x_horizon_list[i]
             state_cost = cas.mtimes(cas.mtimes(x_error.T, self.cas_state_cost_matrix), x_error)
             u_error = self.u_ref[i - 1, :] - self.u_horizon[i - 1, :]
@@ -117,12 +117,14 @@ class StochasticLinearMPC(Controller):
             self.prediction_cost = self.prediction_cost + state_cost + input_cost
 
         self.x_horizon = cas.hcat(self.x_horizon_list)
-        self.horizon_pred = cas.Function('horizon_pred', [self.u_horizon_flat], [self.x_horizon])
+        self.horizon_pred = cas.Function('horizon_pred', [self.x_0, self.u_horizon_flat], [self.x_horizon])
         self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
 
-        optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat}
+        self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat)
+
+        self.optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat, "p": self.nlp_params}
         self.nlpsol_opts = {'verbose_init': False, 'print_in': False, 'print_out': False, 'print_time': False, 'verbose': False, 'ipopt':{'print_level': 0}}
-        self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", optim_problem, self.nlpsol_opts)
+        self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
 
     def update_path(self, new_path):
         self.path = new_path
@@ -144,6 +146,7 @@ class StochasticLinearMPC(Controller):
             if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
                 self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
                 self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
+                self.last_path_pose_id = self.orthogonal_projection_id
                 break
         return None
 
@@ -153,12 +156,17 @@ class StochasticLinearMPC(Controller):
         target_displacement_rate = self.maximum_linear_velocity / self.rate
         target_trajectory_path_id = self.orthogonal_projection_id
         for i in range(0, self.horizon_length):
+            if target_trajectory_path_id + 1 == self.path.poses.shape[0]:
+                for j in range(i, self.horizon_length):
+                    self.target_trajectory[:2, j] = self.path.poses[target_trajectory_path_id][:2]
+                    self.target_trajectory[2, j] = self.path.angles[target_trajectory_path_id]
+                break
             target_displacement += target_displacement_rate
             path_displacement = self.path.distances_to_goal[target_trajectory_path_id] - self.path.distances_to_goal[target_trajectory_path_id + 1]
             if target_displacement >= path_displacement / 2:
                 target_trajectory_path_id += 1
                 target_displacement = -path_displacement / 2
-            self.target_trajectory[:2, i] = self.path.poses[target_trajectory_path_id]
+            self.target_trajectory[:2, i] = self.path.poses[target_trajectory_path_id][:2]
             self.target_trajectory[2, i] = self.path.angles[target_trajectory_path_id]
         return None
     def compute_orthogonal_projections(self, prediction_means):
@@ -216,16 +224,16 @@ class StochasticLinearMPC(Controller):
 
 
     def compute_command_vector(self, state):
-        self.init_state = state
+        planar_state = np.array([state[0], state[1], state[5]])
         self.compute_desired_trajectory(state)
-        self.x0[:2] = state[:2]
-        self.x_ref[:, :] = self.target_trajectory
-        self.x0[2] = state[5]
-        optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten())['x']
-
+        nlp_params = np.concatenate((planar_state, self.target_trajectory.flatten('C')))
+        optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(), p=nlp_params)['x']
+        self.previous_input_array[0, :] = np.array(optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
+        self.previous_input_array[1, :] = np.array(optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
         wheel_input_array = np.array([optim_control_solution[0], optim_control_solution[self.horizon_length]]).reshape(2,1)
-        body_input_array = self.ideal_diff_drive.compute_body_vel(wheel_input_array)
-        return body_input_array
+        body_input_array = self.ideal_diff_drive.compute_body_vel(wheel_input_array).astype('float64')
+        return body_input_array.reshape(2)
+
         # fun = lambda x: self.compute_objective(x)
         # optimization_result = minimize(fun, self.previous_input_array.flatten(), method='SLSQP')
         # print(optimization_result.x)
