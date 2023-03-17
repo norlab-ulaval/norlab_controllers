@@ -1,8 +1,7 @@
-from setuptools import find_packages, setup
+from setuptools import setup
 
 setup(
     name='norlabcontrollib',
-    # packages=find_packages(include=['norlabcontrollib'),
     packages=['norlabcontrollib', 'norlabcontrollib.controllers', 'norlabcontrollib.path'],
     version='0.1.0',
     description='Norlab control library',
