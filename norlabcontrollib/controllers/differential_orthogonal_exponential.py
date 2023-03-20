@@ -15,12 +15,12 @@ class DifferentialOrthogonalExponential(Controller):
 
     def update_path(self, new_path):
         self.path = new_path
-        return None
+        self.distance_to_goal = 100000
+        self.euclidean_distance_to_goal = 100000
 
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
-        return None
 
     def compute_linear_velocity(self, orthogonal_projection_id):
 
