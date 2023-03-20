@@ -21,7 +21,7 @@ class DifferentialRotationP(Controller):
         error = self.compute_angular_error(state[5], self.path.poses[self.current_path_pose_id, 5])
         if abs(error) < self.goal_tolerance and self.current_path_pose_id < len(self.path.poses) - 1:
             self.current_path_pose_id += 1
-            error = self.compute_angular_distance(state[5], self.path.poses[self.current_path_pose_id, 5])
+            error = self.compute_angular_error(state[5], self.path.poses[self.current_path_pose_id, 5])
         return np.array([0, min(self.p_gain * error, self.maximum_angular_velocity)])
 
     def update_path(self, new_path):
