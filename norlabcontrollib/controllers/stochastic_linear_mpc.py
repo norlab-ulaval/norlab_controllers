@@ -28,6 +28,7 @@ class StochasticLinearMPC(Controller):
         self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.input_cost_wheel = parameter_map['input_cost_wheel']
         self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
+        self.angular_velocity_gain = parameter_map['angular_velocity_gain']
         self.ancillary_gain_linear = parameter_map['ancillary_gain_linear']
         self.ancillary_gain_angular = parameter_map['ancillary_gain_angular']
         self.ancillary_gain_array = np.array([self.ancillary_gain_linear, self.ancillary_gain_angular]).reshape(2, 1)
@@ -60,18 +61,21 @@ class StochasticLinearMPC(Controller):
 
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
+        self.max_wheel_vel = self.ideal_diff_drive.compute_wheel_vels(np.array([self.maximum_linear_velocity, 0]))[0]
         # self.previous_input_array = self.ideal_diff_drive.compute_wheel_vels(previous_body_vel_input_array)
         self.previous_input_array = np.zeros((2, self.horizon_length))
         self.nd_input_array = np.zeros((2, self.horizon_length))
         self.target_trajectory = np.zeros((3, self.horizon_length))
+        self.optim_trajectory_array = np.zeros((3, self.horizon_length))
+        self.straight_line_input = np.full(2*self.horizon_length, 1.0)
 
         ############################ CASADI optimal control test
         self.R = cas.SX.eye(3)
         self.J = cas.SX(3, 2)
         self.J[0, :] = self.wheel_radius / 2
         self.J[1, :] = 0
-        self.J[2, 0] = -self.wheel_radius / self.baseline
-        self.J[2, 1] = self.wheel_radius / self.baseline
+        self.J[2, 0] = -self.angular_velocity_gain * self.wheel_radius / self.baseline
+        self.J[2, 1] = self.angular_velocity_gain * self.wheel_radius / self.baseline
 
         self.casadi_x = cas.SX.sym('x', 3)
         self.casadi_u = cas.SX.sym('u', 2)
@@ -82,8 +86,8 @@ class StochasticLinearMPC(Controller):
         self.R[1, 0] = cas.sin((self.casadi_x[2]))
         self.R_inv = self.R.T
 
-        x_k = self.casadi_x + cas.mtimes(self.R_inv, cas.mtimes(self.J, self.casadi_u)) / self.rate
-        self.single_step_pred = cas.Function('single_step_pred', [self.casadi_x, self.casadi_u], [x_k])
+        self.x_k = self.casadi_x + cas.mtimes(self.R, cas.mtimes(self.J, self.casadi_u)) / self.rate
+        self.single_step_pred = cas.Function('single_step_pred', [self.casadi_x, self.casadi_u], [self.x_k])
 
         self.x_0 = cas.SX.sym('x_0', 3, 1)
         self.x_horizon_list = [self.x_0]
@@ -121,7 +125,8 @@ class StochasticLinearMPC(Controller):
         self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
 
         self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat)
-
+        self.lower_bound_input = np.full(2*self.horizon_length, -self.max_wheel_vel)
+        self.upper_bound_input = np.full(2*self.horizon_length, self.max_wheel_vel)
         self.optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat, "p": self.nlp_params}
         self.nlpsol_opts = {'verbose_init': False, 'print_in': False, 'print_out': False, 'print_time': False, 'verbose': False, 'ipopt':{'print_level': 0}}
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
@@ -221,17 +226,29 @@ class StochasticLinearMPC(Controller):
         return cost
 
     # def compute_objective_gradient(self, input):
-
-
     def compute_command_vector(self, state):
-        planar_state = np.array([state[0], state[1], state[5]])
-        self.compute_desired_trajectory(state)
-        nlp_params = np.concatenate((planar_state, self.target_trajectory.flatten('C')))
-        optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(), p=nlp_params)['x']
-        self.previous_input_array[0, :] = np.array(optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
-        self.previous_input_array[1, :] = np.array(optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
-        wheel_input_array = np.array([optim_control_solution[0], optim_control_solution[self.horizon_length]]).reshape(2,1)
+        self.planar_state = np.array([state[0], state[1], state[5]])
+        self.compute_desired_trajectory(self.planar_state)
+        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C')))
+        self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
+                                                           p=nlp_params,
+                                                           lbx= self.lower_bound_input,
+                                                           ubx= self.upper_bound_input)['x']
+        # self.previous_input_array[0, :] = np.array(optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
+        # self.previous_input_array[1, :] = np.array(optim_control_solution[self.horizon_length:]).reshape(self.horizon_length)
+        self.optimal_left = self.optim_control_solution[0]
+        self.optimal_right = self.optim_control_solution[self.horizon_length]
+        wheel_input_array = np.array([self.optim_control_solution[0], self.optim_control_solution[self.horizon_length]]).reshape(2,1)
         body_input_array = self.ideal_diff_drive.compute_body_vel(wheel_input_array).astype('float64')
+
+        optim_trajectory = self.horizon_pred(self.planar_state, self.optim_control_solution)
+        # optim_trajectory = self.horizon_pred(self.planar_state, self.straight_line_input)
+        self.optim_solution_array = np.array(self.optim_control_solution)
+        self.optim_trajectory_array[0, :] = optim_trajectory[0, :]
+        self.optim_trajectory_array[1, :] = optim_trajectory[1, :]
+        self.optim_trajectory_array[2, :] = optim_trajectory[2, :]
+        self.previous_input_array[0, :] = self.optim_solution_array[:self.horizon_length].reshape(self.horizon_length)
+        self.previous_input_array[1, :] = self.optim_solution_array[self.horizon_length:].reshape(self.horizon_length)
         return body_input_array.reshape(2)
 
         # fun = lambda x: self.compute_objective(x)
