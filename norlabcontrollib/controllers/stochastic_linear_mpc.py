@@ -249,6 +249,8 @@ class StochasticLinearMPC(Controller):
         self.optim_trajectory_array[2, :] = optim_trajectory[2, :]
         self.previous_input_array[0, :] = self.optim_solution_array[:self.horizon_length].reshape(self.horizon_length)
         self.previous_input_array[1, :] = self.optim_solution_array[self.horizon_length:].reshape(self.horizon_length)
+        self.compute_distance_to_goal(state, self.orthogonal_projection_id)
+        self.last_path_pose_id = self.orthogonal_projection_id
         return body_input_array.reshape(2)
 
         # fun = lambda x: self.compute_objective(x)
