@@ -68,6 +68,7 @@ class StochasticLinearMPC(Controller):
         self.target_trajectory = np.zeros((3, self.horizon_length))
         self.optim_trajectory_array = np.zeros((3, self.horizon_length))
         self.straight_line_input = np.full(2*self.horizon_length, 1.0)
+        self.straight_line_input[self.horizon_length:] = np.full(self.horizon_length, 2.0)
 
         ############################ CASADI optimal control test
         self.R = cas.SX.eye(3)
@@ -114,7 +115,7 @@ class StochasticLinearMPC(Controller):
 
         for i in range(1, self.horizon_length):
             self.x_horizon_list.append(self.single_step_pred(self.x_horizon_list[i - 1], self.u_horizon[i - 1, :]))
-            x_error = self.x_ref[i] - self.x_horizon_list[i]
+            x_error = self.x_ref[:, i] - self.x_horizon_list[i]
             state_cost = cas.mtimes(cas.mtimes(x_error.T, self.cas_state_cost_matrix), x_error)
             u_error = self.u_ref[i - 1, :] - self.u_horizon[i - 1, :]
             input_cost = cas.mtimes(cas.mtimes(u_error, self.cas_input_cost_matrix), u_error.T)
@@ -234,8 +235,8 @@ class StochasticLinearMPC(Controller):
                                                            p=nlp_params,
                                                            lbx= self.lower_bound_input,
                                                            ubx= self.upper_bound_input)['x']
-        # self.previous_input_array[0, :] = np.array(optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
-        # self.previous_input_array[1, :] = np.array(optim_control_solution[self.horizon_length:]).reshape(self.horizon_length)
+        self.previous_input_array[0, :] = np.array(self.optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
+        self.previous_input_array[1, :] = np.array(self.optim_control_solution[self.horizon_length:]).reshape(self.horizon_length)
         self.optimal_left = self.optim_control_solution[0]
         self.optimal_right = self.optim_control_solution[self.horizon_length]
         wheel_input_array = np.array([self.optim_control_solution[0], self.optim_control_solution[self.horizon_length]]).reshape(2,1)

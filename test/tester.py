@@ -18,7 +18,8 @@ test_path.compute_metrics(controller.path_look_ahead_distance)
 controller.update_path(test_path)
 #
 init_state = np.zeros(6)
-init_state[1] = 0.5
+init_state[0] = 0.0
+init_state[1] = 2.5
 init_state[5] = -1.5
 # init_state[1] = 2
 # init_state[0] = 9.703779
