@@ -4,7 +4,7 @@ from scipy.spatial import KDTree
 
 class Path:
     def __init__(self, poses):
-        self.forward_direction = True
+        self.going_forward = True
         self.poses = poses
         self.n_poses = self.poses.shape[0]
         self.pose_kdtree = KDTree(poses[:, :2])
