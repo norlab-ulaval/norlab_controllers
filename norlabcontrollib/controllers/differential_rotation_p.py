@@ -9,7 +9,7 @@ class DifferentialRotationP(Controller):
         self.p_gain = parameter_map["p_gain"]
         self.angular_distance_to_goal = 100000
 
-    def compute_angular_error(self, going_forward):
+    def compute_angular_error(self):
         angular_error = self.goal_angle - self.current_angle
         if angular_error > math.pi:
             angular_error -= 2 * math.pi
@@ -20,7 +20,7 @@ class DifferentialRotationP(Controller):
     def compute_command_vector(self, state):
         self.current_angle = state[5]
         self.goal_angle = self.path.poses[0, 5]
-        error = self.compute_angular_error(self.path.going_forward)
+        error = self.compute_angular_error()
         self.angular_distance_to_goal = abs(error)
         return np.array([0, min(self.p_gain * error, self.maximum_angular_velocity)])
 
