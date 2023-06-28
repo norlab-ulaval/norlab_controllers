@@ -1,12 +1,11 @@
 from norlabcontrollib.controllers.controller import Controller
-from norlabcontrollib.models.blr_slip import FullBodySlipBayesianLinearRegression
 from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
 
 import numpy as np
 from scipy.optimize import minimize
 import casadi as cas
 
-class StochasticLinearMPC(Controller):
+class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
         self.gain_distance_to_goal_linear = parameter_map['gain_distance_to_goal_linear']
@@ -27,23 +26,23 @@ class StochasticLinearMPC(Controller):
         self.state_cost_matrix[1,1] = self.state_cost_translational
         self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.input_cost_wheel = parameter_map['input_cost_wheel']
-        self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
-        self.angular_velocity_gain = parameter_map['angular_velocity_gain']
-        self.ancillary_gain_linear = parameter_map['ancillary_gain_linear']
-        self.ancillary_gain_angular = parameter_map['ancillary_gain_angular']
-        self.ancillary_gain_array = np.array([self.ancillary_gain_linear, self.ancillary_gain_angular]).reshape(2, 1)
-        self.constraint_tolerance = parameter_map['constraint_tolerance']
-        self.prob_safety_level = parameter_map['prob_safety_level']
-        self.initial_state_stdev = parameter_map['initial_state_stdev']
-        self.initial_state_covariance = np.eye(3) * self.initial_state_stdev**2
+        # self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
+        # self.angular_velocity_gain = parameter_map['angular_velocity_gain']
+        # self.ancillary_gain_linear = parameter_map['ancillary_gain_linear']
+        # self.ancillary_gain_angular = parameter_map['ancillary_gain_angular']
+        # self.ancillary_gain_array = np.array([self.ancillary_gain_linear, self.ancillary_gain_angular]).reshape(2, 1)
+        # self.constraint_tolerance = parameter_map['constraint_tolerance']
+        # self.prob_safety_level = parameter_map['prob_safety_level']
+        # self.initial_state_stdev = parameter_map['initial_state_stdev']
+        # self.initial_state_covariance = np.eye(3) * self.initial_state_stdev**2
 
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
-        self.a_param_init = parameter_map['a_param_init']
-        self.b_param_init = parameter_map['b_param_init']
-        self.param_variance_init = parameter_map['param_variance_init']
-        self.variance_init = parameter_map['variance_init']
-        self.kappa_param = parameter_map['kappa_param']
+        # self.a_param_init = parameter_map['a_param_init']
+        # self.b_param_init = parameter_map['b_param_init']
+        # self.param_variance_init = parameter_map['param_variance_init']
+        # self.variance_init = parameter_map['variance_init']
+        # self.kappa_param = parameter_map['kappa_param']
 
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
@@ -53,16 +52,10 @@ class StochasticLinearMPC(Controller):
         self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
 
         self.ideal_diff_drive = Ideal_diff_drive(self.wheel_radius, self.baseline, 1/self.rate)
-        # self.full_body_blr_model = FullBodySlipBayesianLinearRegression(1, 1, 3, self.a_param_init, self.b_param_init,
-        #                                                                 self.param_variance_init, self.variance_init,
-        #                                                                 self.baseline, self.wheel_radius, 1/self.rate, self.kappa_param)
-        # self.trained_model_path = parameter_map['trained_model_path']
-        # self.full_body_blr_model.load_params(self.trained_model_path)
 
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
         self.max_wheel_vel = self.ideal_diff_drive.compute_wheel_vels(np.array([self.maximum_linear_velocity, 0]))[0]
-        # self.previous_input_array = self.ideal_diff_drive.compute_wheel_vels(previous_body_vel_input_array)
         self.previous_input_array = np.zeros((2, self.horizon_length))
         self.nd_input_array = np.zeros((2, self.horizon_length))
         self.target_trajectory = np.zeros((3, self.horizon_length))
@@ -70,7 +63,9 @@ class StochasticLinearMPC(Controller):
         self.straight_line_input = np.full(2*self.horizon_length, 1.0)
         self.straight_line_input[self.horizon_length:] = np.full(self.horizon_length, 2.0)
 
-        ############################ CASADI optimal control test
+        self.init_casadi_model()
+
+    def init_casadi_model(self):
         self.R = cas.SX.eye(3)
         self.J = cas.SX(3, 2)
         self.J[0, :] = self.wheel_radius / 2
@@ -126,34 +121,16 @@ class StochasticLinearMPC(Controller):
         self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
 
         self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat)
-        self.lower_bound_input = np.full(2*self.horizon_length, -self.max_wheel_vel)
-        self.upper_bound_input = np.full(2*self.horizon_length, self.max_wheel_vel)
+        self.lower_bound_input = np.full(2 * self.horizon_length, -self.max_wheel_vel)
+        self.upper_bound_input = np.full(2 * self.horizon_length, self.max_wheel_vel)
         self.optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat, "p": self.nlp_params}
-        self.nlpsol_opts = {'verbose_init': False, 'print_in': False, 'print_out': False, 'print_time': False, 'verbose': False, 'ipopt':{'print_level': 0}}
+        self.nlpsol_opts = {'verbose_init': False, 'print_in': False, 'print_out': False, 'print_time': False,
+                            'verbose': False, 'ipopt': {'print_level': 0}}
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
+
 
     def update_path(self, new_path):
         self.path = new_path
-        return None
-
-    def input_to_body_vel(self, input_array):
-        return self.full_body_blr_model.compute_body_vel(input_array)
-
-    def predict_horizon(self, init_state, input_array):
-        body_vels_horizon = self.input_to_body_vel(input_array).T
-        prediction_means, prediction_covariances = self.full_body_blr_model.predict_horizon_from_body_idd_vels(body_vels_horizon, init_state, self.initial_state_covariance)
-        # for i in range(0, self.horizon_length):
-        #     self.prediction_input_covariances[:, :, i] = self.ancillary_gain_array @ prediction_covariances[:, :, i] @ self.ancillary_gain_array.T
-        return prediction_means, prediction_covariances
-
-    def compute_orthogonal_projection(self, state):
-        self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
-        for i in range(0, self.orthogonal_projection_ids.shape[0]):
-            if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
-                self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
-                self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
-                self.last_path_pose_id = self.orthogonal_projection_id
-                break
         return None
 
     def compute_desired_trajectory(self, state):
@@ -175,58 +152,7 @@ class StochasticLinearMPC(Controller):
             self.target_trajectory[:2, i] = self.path.poses[target_trajectory_path_id][:2]
             self.target_trajectory[2, i] = self.path.angles[target_trajectory_path_id]
         return None
-    def compute_orthogonal_projections(self, prediction_means):
-        orthogonal_projection_dists, orthogonal_projection_ids = self.path.pose_kdtree.query(prediction_means[:2, :].T, k=self.query_knn, distance_upper_bound=self.query_radius)
-        for i in range(0, self.horizon_length):
-            for j in range(0, orthogonal_projection_ids.shape[1]):
-                if np.abs(orthogonal_projection_ids[i, j] - self.last_path_pose_id) <= self.id_window_size:
-                    self.orthogonal_projection_ids_horizon[i] = int(orthogonal_projection_ids[i, j])
-                    self.orthogonal_projection_dists_horizon[i] = orthogonal_projection_dists[i, j]
-                    break
-        # self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(
-        #     state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
-        # for i in range(0, self.orthogonal_projection_ids.shape[0]):
-        #     if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
-        #         self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
-        #         self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
-        #         break
 
-
-    def compute_distance_to_goal(self, state, orthogonal_projection_id):
-        self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
-        self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
-        return None
-
-    def compute_horizon_cost(self, prediction_means, prediction_covariances, input_array):
-        prediction_cost = 0
-        for i in range(0, self.horizon_length):
-            state_error = prediction_means[:, i] - self.path.planar_poses[self.orthogonal_projection_ids_horizon[i]]
-            state_cost_timestep = state_error @ self.state_cost_matrix @ state_error.T + np.trace(self.state_cost_matrix @ prediction_covariances[:, :, i])
-
-            input_error = input_array[:, i] - self.previous_input_array[:, i]
-            input_cost_timestep = input_error @ self.input_cost_matrix @ input_error.T
-            # TODO: Possibly implement ancillary input coriances to add to cost
-            prediction_cost += state_cost_timestep + input_cost_timestep
-        return prediction_cost
-
-    def predict_then_compute_cost(self, input):
-        # body_vel_array = self.full_body_blr_model.compute_body_vel(input)
-        self.prediction_means, self.prediction_covariances = self.predict_horizon(self.init_state, input)
-        self.compute_orthogonal_projections(self.prediction_means)
-        return self.compute_horizon_cost(self.prediction_means, self.prediction_covariances, input)
-
-    # def compute_prediction_lagrangian(self):
-    # def compution_prediction_gradient(self, prediction_cost):
-    def compute_objective(self, input):
-        # body_vel_array = self.full_body_blr_model.compute_body_vel(input)
-        self.nd_input_array[0, :] = input[:self.horizon_length]
-        self.nd_input_array[1, :] = input[self.horizon_length:]
-        prediction_means, prediction_covariances = self.predict_horizon(self.init_state, self.nd_input_array)
-        self.compute_orthogonal_projections(prediction_means)
-        cost = self.compute_horizon_cost(prediction_means, prediction_covariances, self.nd_input_array)
-        return cost
-
-    # def compute_objective_gradient(self, input):
     def compute_command_vector(self, state):
         self.planar_state = np.array([state[0], state[1], state[5]])
         self.compute_desired_trajectory(self.planar_state)
@@ -243,7 +169,6 @@ class StochasticLinearMPC(Controller):
         body_input_array = self.ideal_diff_drive.compute_body_vel(wheel_input_array).astype('float64')
 
         optim_trajectory = self.horizon_pred(self.planar_state, self.optim_control_solution)
-        # optim_trajectory = self.horizon_pred(self.planar_state, self.straight_line_input)
         self.optim_solution_array = np.array(self.optim_control_solution)
         self.optim_trajectory_array[0, :] = optim_trajectory[0, :]
         self.optim_trajectory_array[1, :] = optim_trajectory[1, :]
@@ -253,8 +178,3 @@ class StochasticLinearMPC(Controller):
         self.compute_distance_to_goal(state, self.orthogonal_projection_id)
         self.last_path_pose_id = self.orthogonal_projection_id
         return body_input_array.reshape(2)
-
-        # fun = lambda x: self.compute_objective(x)
-        # optimization_result = minimize(fun, self.previous_input_array.flatten(), method='SLSQP')
-        # print(optimization_result.x)
-        # return optimization_result.x
