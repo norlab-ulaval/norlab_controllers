@@ -9,7 +9,6 @@ class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
         self.gain_distance_to_goal_linear = parameter_map['gain_distance_to_goal_linear']
-        self.gain_path_curvature_linear = parameter_map['gain_path_curvature_linear']
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
         self.query_radius = parameter_map['query_radius']
         self.query_knn = parameter_map['query_knn']
@@ -26,23 +25,11 @@ class IdealDiffDriveMPC(Controller):
         self.state_cost_matrix[1,1] = self.state_cost_translational
         self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.input_cost_wheel = parameter_map['input_cost_wheel']
-        # self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
-        # self.angular_velocity_gain = parameter_map['angular_velocity_gain']
-        # self.ancillary_gain_linear = parameter_map['ancillary_gain_linear']
-        # self.ancillary_gain_angular = parameter_map['ancillary_gain_angular']
-        # self.ancillary_gain_array = np.array([self.ancillary_gain_linear, self.ancillary_gain_angular]).reshape(2, 1)
-        # self.constraint_tolerance = parameter_map['constraint_tolerance']
-        # self.prob_safety_level = parameter_map['prob_safety_level']
-        # self.initial_state_stdev = parameter_map['initial_state_stdev']
-        # self.initial_state_covariance = np.eye(3) * self.initial_state_stdev**2
+        self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
+        self.angular_velocity_gain = parameter_map['angular_velocity_gain']
 
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
-        # self.a_param_init = parameter_map['a_param_init']
-        # self.b_param_init = parameter_map['b_param_init']
-        # self.param_variance_init = parameter_map['param_variance_init']
-        # self.variance_init = parameter_map['variance_init']
-        # self.kappa_param = parameter_map['kappa_param']
 
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
