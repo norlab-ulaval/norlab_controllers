@@ -15,7 +15,7 @@ class ControllerFactory:
                 controller = DifferentialRotationP(yaml_params)
             elif yaml_params['controller_name'] == 'IdealDiffDriveMPC':
                 controller = IdealDiffDriveMPC(yaml_params)
-            elif yaml_params['controller_name'] == 'PwrtrnDiffDriveMPC':
+            elif yaml_params['controller_name'] == 'PowertrainIdealDiffDriveMPC':
                 controller = PowertrainIdealDiffDriveMPC(yaml_params)
             else:
                 raise RuntimeError("Undefined controller, please specify a valid controller name")

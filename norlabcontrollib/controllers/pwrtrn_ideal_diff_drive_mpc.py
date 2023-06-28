@@ -35,11 +35,11 @@ class PowertrainIdealDiffDriveMPC(Controller):
         pwrtrn_params_left = np.load(pwrtrn_param_path + 'powertrain_training_left.npy')
         self.time_constant_left = pwrtrn_params_left[0]
         self.time_delay_left = pwrtrn_params_left[1]
-        self.time_delay_left_integer = np.floor(self.time_delay_left / (1/self.rate)) + (1-self.rate)
+        self.time_delay_left_integer = int(np.floor(self.time_delay_left / (1/self.rate)))
         pwrtrn_params_right = np.load(pwrtrn_param_path + 'powertrain_training_right.npy')
-        self.time_delay_right_integer = np.floor(self.time_delay_right / (1/self.rate)) + (1-self.rate)
         self.time_constant_right = pwrtrn_params_right[0]
         self.time_delay_right = pwrtrn_params_right[1]
+        self.time_delay_right_integer = int(np.floor(self.time_delay_right / (1/self.rate)))
 
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
@@ -91,8 +91,8 @@ class PowertrainIdealDiffDriveMPC(Controller):
 
         self.u_horizon_pwrtrn = cas.SX(self.horizon_length, 2)
         for i in range(1, self.horizon_length):
-            time_delayed_id_left = np.clip(i - self.time_delay_left_integer, 0, self.horizon_length)
-            time_delayed_id_right = np.clip(i - self.time_delay_right_integer, 0, self.horizon_length)
+            time_delayed_id_left = int(np.clip(i - self.time_delay_left_integer, 0, self.horizon_length))
+            time_delayed_id_right = int(np.clip(i - self.time_delay_right_integer, 0, self.horizon_length))
             self.u_horizon_pwrtrn[i, 0] = self.u_horizon[i-1, 0] + (1/self.time_constant_left) * \
                                           (self.u_horizon[time_delayed_id_left, 0] - self.u_horizon[i, 0]) * (1/self.rate)
             self.u_horizon_pwrtrn[i, 1] = self.u_horizon[i-1, 1] + (1/self.time_constant_right) * \
@@ -115,10 +115,10 @@ class PowertrainIdealDiffDriveMPC(Controller):
         self.prediction_cost = cas.SX(0)
 
         for i in range(1, self.horizon_length):
-            self.x_horizon_list.append(self.single_step_pred(self.x_horizon_list[i - 1], self.u_horizon[i - 1, :]))
+            self.x_horizon_list.append(self.single_step_pred(self.x_horizon_list[i - 1], self.u_horizon_pwrtrn[i - 1, :]))
             x_error = self.x_ref[:, i] - self.x_horizon_list[i]
             state_cost = cas.mtimes(cas.mtimes(x_error.T, self.cas_state_cost_matrix), x_error)
-            u_error = self.u_ref[i - 1, :] - self.u_horizon[i - 1, :]
+            u_error = self.u_ref[i - 1, :] - self.u_horizon_pwrtrn[i - 1, :]
             input_cost = cas.mtimes(cas.mtimes(u_error, self.cas_input_cost_matrix), u_error.T)
             self.prediction_cost = self.prediction_cost + state_cost + input_cost
 
