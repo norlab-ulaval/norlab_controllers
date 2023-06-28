@@ -1,5 +1,5 @@
 import numpy as np
-from ..util.transform_algebra import *
+from norlabcontrollib.util.transform_algebra import *
 
 class SlipBayesianLinearRegression:
     def __init__(self, n_dimensions, a_param_init, b_param_init, param_variance_init, variance_init):
@@ -114,10 +114,10 @@ class FullBodySlipBayesianLinearRegression:
         self.body_yaw_slip_blr.b_param_n = np.load(param_directory_path + 'b_param_n_yaw.npy')
 
     def compute_body_vel(self, input):
-        return self.jacobian_3x3 @ input
+        return self.jacobian @ input
 
-    def compute_wheel_vels(self, body_vel):
-        return self.inv_jacobian @ body_vel
+    def compute_body_vel_horizon(self, horizon_input):
+        return self.jacobian @ input
 
     def compute_sigma_points(self, mean_state_disturbance_vector, covariance):
         cholesky_matrix = np.linalg.cholesky(covariance)
