@@ -1,18 +1,28 @@
 from norlabcontrollib.controllers.controller_factory import ControllerFactory
-from norlabcontrollib.path.path import Path
+from norlabcontrollib.path.path import Path as controlPath
 from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
 
 import autograd.numpy as np
-from autograd import grad
+
+# from autograd import grad
 import time
 import casadi as cas
-import numdifftools as nd
+
+# import numdifftools as nd
+
+from pathlib import Path
+
+cwd = Path(__file__).parent
 
 controller_factory = ControllerFactory()
-controller = controller_factory.load_parameters_from_yaml('test_parameters_smpc.yaml')
+controller = controller_factory.load_parameters_from_yaml(
+    # cwd / "test_parameters_smpc.yaml"
+    cwd
+    / "test_parameters_dd_orhexp.yaml"
+)
 #
-test_path_poses = np.load('../traj_a_int.npy')
-test_path = Path(test_path_poses)
+test_path_poses = np.load(cwd / "traj_a_int.npy")
+test_path = controlPath(test_path_poses)
 test_path.compute_metrics(controller.path_look_ahead_distance)
 #
 controller.update_path(test_path)
@@ -154,5 +164,4 @@ print(t1 - t0)
 # plt.show()
 #
 #
-print('test')
-
+print("test")

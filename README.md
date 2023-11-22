@@ -1,6 +1,6 @@
 # norlab_controllers
 
-> A library for Norlab controllers
+> A library for NorLab controllers
 
 `norlabcontrollib` is a library with different control algorithms that were implemented and used on [Norlab](http://norlab.ulaval.ca)'s [robots](https://norlab.ulaval.ca/research/norlab-robots) in the field.
 

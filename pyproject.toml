@@ -31,6 +31,9 @@ dev = ["black", "pylint"]
 [project.urls]
 Homepage = "https://github.com/norlab-ulaval/norlab_controllers"
 
+[tool.flit.sdist]
+exclude = ["examples/"]
+
 [tool.black]
 line-length = 90
 
