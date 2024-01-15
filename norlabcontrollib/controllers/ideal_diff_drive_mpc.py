@@ -8,7 +8,7 @@ import casadi as cas
 class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
-        self.gain_distance_to_goal_linear = parameter_map['gain_distance_to_goal_linear']
+        # self.gain_distance_to_goal_linear = parameter_map['gain_distance_to_goal_linear']     # CLEANUP
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
         self.query_radius = parameter_map['query_radius']
         self.query_knn = parameter_map['query_knn']
@@ -115,10 +115,14 @@ class IdealDiffDriveMPC(Controller):
                             'verbose': False, 'ipopt': {'print_level': 0}}
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
 
-
     def update_path(self, new_path):
         self.path = new_path
-        return None
+        self.distance_to_goal = 100000
+        self.euclidean_distance_to_goal = 100000
+
+    def compute_distance_to_goal(self, state, orthogonal_projection_id):
+        self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
+        self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
 
     def compute_desired_trajectory(self, state):
         self.compute_orthogonal_projection(state)
