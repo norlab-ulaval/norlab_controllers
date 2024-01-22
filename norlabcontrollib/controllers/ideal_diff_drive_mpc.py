@@ -8,7 +8,6 @@ import casadi as cas
 class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
-        # self.gain_distance_to_goal_linear = parameter_map['gain_distance_to_goal_linear']     # CLEANUP
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
         self.query_radius = parameter_map['query_radius']
         self.query_knn = parameter_map['query_knn']
@@ -117,12 +116,22 @@ class IdealDiffDriveMPC(Controller):
 
     def update_path(self, new_path):
         self.path = new_path
-        self.distance_to_goal = 100000
-        self.euclidean_distance_to_goal = 100000
-
+        return None
+    
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
+    
+    def compute_orthogonal_projection(self, state):
+        self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
+        for i in range(0, self.orthogonal_projection_ids.shape[0]):
+            if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
+                self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
+                self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
+                self.last_path_pose_id = self.orthogonal_projection_id
+                break
+        return None
+
 
     def compute_desired_trajectory(self, state):
         self.compute_orthogonal_projection(state)
