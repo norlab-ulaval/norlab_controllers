@@ -1,13 +1,16 @@
 from norlabcontrollib.controllers.controller import Controller
 from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
 
+from norlabcontrollib.models.blr_slip import FullBodySlipBayesianLinearRegression
+
 import numpy as np
 from scipy.optimize import minimize
 import casadi as cas
 
-class IdealDiffDriveMPC(Controller):
+class SlipBLRDiffDriveSMPC(Controller):
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
+        self.gain_distance_to_goal_linear = parameter_map['gain_distance_to_goal_linear']
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
         self.query_radius = parameter_map['query_radius']
         self.query_knn = parameter_map['query_knn']
@@ -25,10 +28,21 @@ class IdealDiffDriveMPC(Controller):
         self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.input_cost_wheel = parameter_map['input_cost_wheel']
         self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
-        self.angular_velocity_gain = parameter_map['angular_velocity_gain']
 
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
+
+        blr_params_path = parameter_map['blr_slip_params_path']
+
+        a_param_init = 0
+        b_param_init = 0
+        param_variance_init = 999999999999999999999
+        variance_init = 1000000000
+        kappa_param = 1
+        self.full_body_slip_blr = FullBodySlipBayesianLinearRegression(1, 1, 3, a_param_init, b_param_init,
+                                                                  param_variance_init, variance_init, self.baseline,
+                                                                  self.wheel_radius, 1/self.rate, kappa_param)
+        self.full_body_slip_blr.load_params(blr_params_path)
 
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
@@ -56,8 +70,15 @@ class IdealDiffDriveMPC(Controller):
         self.J = cas.SX(3, 2)
         self.J[0, :] = self.wheel_radius / 2
         self.J[1, :] = 0
-        self.J[2, 0] = -self.angular_velocity_gain * self.wheel_radius / self.baseline
-        self.J[2, 1] = self.angular_velocity_gain * self.wheel_radius / self.baseline
+        self.J[2, 0] = -self.wheel_radius / self.baseline
+        self.J[2, 1] = self.wheel_radius / self.baseline
+
+        self.slip_weights_x = cas.SX(1,1)
+        self.slip_weights_x[0, 0] = self.full_body_slip_blr.body_x_slip_blr.weights[0]
+        self.slip_weights_y = cas.SX(1,1)
+        self.slip_weights_y[0, 0] = self.full_body_slip_blr.body_y_slip_blr.weights[0]
+        self.slip_weights_yaw = cas.SX(3,1)
+        self.slip_weights_yaw[:, 0] = self.full_body_slip_blr.body_yaw_slip_blr.weights[:]
 
         self.casadi_x = cas.SX.sym('x', 3)
         self.casadi_u = cas.SX.sym('u', 2)
@@ -68,7 +89,27 @@ class IdealDiffDriveMPC(Controller):
         self.R[1, 0] = cas.sin((self.casadi_x[2]))
         self.R_inv = self.R.T
 
-        self.x_k = self.casadi_x + cas.mtimes(self.R, cas.mtimes(self.J, self.casadi_u)) / self.rate
+        self.cmd_body_vel = cas.mtimes(self.J, self.casadi_u)
+
+        self.slip_input_x = cas.SX(1,1)
+        self.slip_input_x[0,0] = self.cmd_body_vel[0,0]
+        self.slip_x = cas.mtimes(self.slip_weights_x.T, self.slip_input_x)
+        self.slip_input_y = cas.SX(1,1)
+        self.slip_input_y[0,0] = self.cmd_body_vel[0,0] * self.cmd_body_vel[2,0]
+        self.slip_y = cas.mtimes(self.slip_weights_y.T, self.slip_input_y)
+        self.slip_input_yaw = cas.SX(3,1)
+        self.slip_input_yaw[0,0] = self.cmd_body_vel[0,0] * self.cmd_body_vel[2,0]
+        self.slip_input_yaw[1,0] = self.cmd_body_vel[0,0]
+        self.slip_input_yaw[2,0] = self.cmd_body_vel[2,0]
+        self.slip_yaw = cas.mtimes(self.slip_weights_yaw.T, self.slip_input_yaw)
+
+        self.body_vel = cas.SX(3,1)
+        self.body_vel[0,0] = self.cmd_body_vel[0,0] - self.slip_x
+        self.body_vel[1,0] = self.cmd_body_vel[1,0] - self.slip_y
+        self.body_vel[2,0] = self.cmd_body_vel[2,0] - self.slip_yaw
+
+        self.x_k = self.casadi_x + cas.mtimes(self.R, self.body_vel) / self.rate
+
         self.single_step_pred = cas.Function('single_step_pred', [self.casadi_x, self.casadi_u], [self.x_k])
 
         self.x_0 = cas.SX.sym('x_0', 3, 1)
@@ -77,6 +118,15 @@ class IdealDiffDriveMPC(Controller):
         self.u_horizon = cas.SX(self.horizon_length, 2)
         self.u_horizon[:, 0] = self.u_horizon_flat[:self.horizon_length]
         self.u_horizon[:, 1] = self.u_horizon_flat[self.horizon_length:]
+
+        # self.cmd_body_vel_horizon = cas.SX(self.horizon_length, 2)
+        # self.slip_body_vel_horizon = cas.SX(self.horizon_length, 3)
+        # for i in range(0, self.horizon_length):
+        #     body_vel_i = cas.mtimes(self.J, self.u_horizon)
+        #     self.cmd_body_vel_horizon[i, 0] = body_vel_i[0]
+        #     self.cmd_body_vel_horizon[i, 1] = body_vel_i[2]
+        #
+        #     self.slip_body_vel_horizon[i, 0] = cas.mtimes()
 
         # self.x_ref = cas.DM.zeros(3, self.horizon_length)
         self.x_ref_flat = cas.SX.sym('x_ref', 3 * self.horizon_length)
@@ -114,24 +164,10 @@ class IdealDiffDriveMPC(Controller):
                             'verbose': False, 'ipopt': {'print_level': 0}}
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
 
+
     def update_path(self, new_path):
         self.path = new_path
         return None
-    
-    def compute_distance_to_goal(self, state, orthogonal_projection_id):
-        self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
-        self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
-    
-    def compute_orthogonal_projection(self, state):
-        self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
-        for i in range(0, self.orthogonal_projection_ids.shape[0]):
-            if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
-                self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
-                self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
-                self.last_path_pose_id = self.orthogonal_projection_id
-                break
-        return None
-
 
     def compute_desired_trajectory(self, state):
         self.compute_orthogonal_projection(state)
