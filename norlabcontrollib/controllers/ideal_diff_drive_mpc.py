@@ -104,7 +104,7 @@ class IdealDiffDriveMPC(Controller):
 
         self.x_horizon = cas.hcat(self.x_horizon_list)
         self.horizon_pred = cas.Function('horizon_pred', [self.x_0, self.u_horizon_flat], [self.x_horizon])
-        self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
+        # self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
 
         self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat)
         self.lower_bound_input = np.full(2 * self.horizon_length, -self.max_wheel_vel)
