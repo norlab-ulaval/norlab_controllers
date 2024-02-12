@@ -24,7 +24,7 @@ class IdealDiffDriveMPC(Controller):
         self.state_cost_matrix[1,1] = self.state_cost_translational
         self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.input_cost_wheel = parameter_map['input_cost_wheel']
-        self.input_cost_matrix = np.eye(2) * self.input_cost_wheel
+        #self.input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
         self.angular_velocity_gain = parameter_map['angular_velocity_gain']
 
         self.wheel_radius = parameter_map['wheel_radius']
@@ -90,8 +90,15 @@ class IdealDiffDriveMPC(Controller):
         self.u_ref = cas.DM.zeros(2, self.horizon_length)
         self.u_ref[:, :] = self.previous_input_array
         self.u_ref = self.u_ref.T
-        self.cas_input_cost_matrix = cas.DM.zeros(2, 2)
-        self.cas_input_cost_matrix[:, :] = self.input_cost_matrix
+
+        # Change self.cas_input_cost_matrix as SX
+        self.input_cost_matrix_flat = cas.SX.sym('input_cost_matrix', 2 * 2)
+        self.cas_input_cost_matrix = cas.SX.eye(2)
+        self.cas_input_cost_matrix[0,:] = self.input_cost_matrix_flat[:2]
+        self.cas_input_cost_matrix[1,:] = self.input_cost_matrix_flat[2:]
+        
+        #self.cas_input_cost_matrix = cas.DM.zeros(2, 2)
+        #self.cas_input_cost_matrix[:, :] = self.input_cost_matrix
         self.prediction_cost = cas.SX(0)
 
         for i in range(1, self.horizon_length):
@@ -106,7 +113,8 @@ class IdealDiffDriveMPC(Controller):
         self.horizon_pred = cas.Function('horizon_pred', [self.x_0, self.u_horizon_flat], [self.x_horizon])
         # self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
 
-        self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat)
+        
+        self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat,self.input_cost_matrix_flat)
         self.lower_bound_input = np.full(2 * self.horizon_length, -self.max_wheel_vel)
         self.upper_bound_input = np.full(2 * self.horizon_length, self.max_wheel_vel)
         self.optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat, "p": self.nlp_params}
@@ -156,7 +164,13 @@ class IdealDiffDriveMPC(Controller):
     def compute_command_vector(self, state):
         self.planar_state = np.array([state[0], state[1], state[5]])
         self.compute_desired_trajectory(self.planar_state)
-        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C')))
+
+        input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
+        
+        self.input_cost_matrix_i = input_cost_matrix_i
+        
+        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),input_cost_matrix_i.flatten({'C'})))
+
         self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
                                                            p=nlp_params,
                                                            lbx= self.lower_bound_input,
