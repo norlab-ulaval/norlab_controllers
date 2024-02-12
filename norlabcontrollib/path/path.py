@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.spatial import KDTree
+from math import ceil, floor
 
+import time
 
 class Path:
     def __init__(self, poses):
@@ -10,7 +12,11 @@ class Path:
         self.planar_poses[:, 0] = poses[:, 0]
         self.planar_poses[:, 1] = poses[:, 1]
         self.n_poses = self.poses.shape[0]
+        print('Number of poses in path:', self.n_poses)
+
+        start = time.time()
         self.pose_kdtree = KDTree(poses[:, :2])
+        print('Time to compute kd tree:', time.time() - start)
 
         self.curvatures = np.zeros(self.n_poses)
         self.look_ahead_curvatures = np.zeros(self.n_poses)
@@ -19,6 +25,7 @@ class Path:
         self.angles_spatial_window = 0.25
         self.world_to_path_tfs_array = np.ndarray((self.n_poses,3,3))
         self.path_to_world_tfs_array = np.ndarray((self.n_poses,3,3))
+        
     def compute_curvatures(self):
         first_derivative_x = np.zeros(self.n_poses)
         first_derivative_y = np.zeros(self.n_poses)
@@ -69,6 +76,7 @@ class Path:
                 path_iterator += 1
             self.look_ahead_curvatures[i] = path_curvature_sum
             self.look_ahead_distance_counter_array[i] = look_ahead_distance_counter
+
     def compute_distances_to_goal(self):
         distance_to_goal = 0
         for i in range(self.n_poses-1, 0, -1):
@@ -109,9 +117,12 @@ class Path:
         self.compute_world_to_path_frame_tfs()
         return None
 
-    def compute_orthogonal_projection(self, pose, last_projection_id, query_knn, query_radius):
-        orthogonal_projection_dists, orthogonal_projection_ids = self.pose_kdtree.query(pose[:2], k=query_knn, distance_upper_bound=query_radius)
-        # orthogonal_projection_dists, orthogonal_projection_ids = self.pose_kdtree.query_ball_point(pose[:2], query_radius, return_sorted=False)
-        return orthogonal_projection_dists, orthogonal_projection_ids
+    def compute_orthogonal_projection(self, pose, last_id, window_size):
+        first_idx, last_idx = floor(max(0, last_id - window_size/2)), ceil(min(self.n_poses, last_id + window_size/2))
+        window_points = self.poses[first_idx:last_idx, :2]
+        distances = np.linalg.norm(window_points - pose[:2], axis=1)
+        closest_id = np.argmin(distances)
+        closest_dist = distances[closest_id]
+        return closest_dist, closest_id + first_idx
 
 # TODO: find a way to split path into multiple directional paths to switch robot direction
