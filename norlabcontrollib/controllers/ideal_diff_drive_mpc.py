@@ -92,10 +92,11 @@ class IdealDiffDriveMPC(Controller):
         self.u_ref = self.u_ref.T
 
         # Change self.cas_input_cost_matrix as SX
-        self.input_cost_matrix_flat = cas.SX.sym('input_cost_matrix', 2 * 2)
+        self.input_cost_param = cas.SX.sym('input_cost_param', 1)
         self.cas_input_cost_matrix = cas.SX.eye(2)
-        self.cas_input_cost_matrix[0,:] = self.input_cost_matrix_flat[:2]
-        self.cas_input_cost_matrix[1,:] = self.input_cost_matrix_flat[2:]
+
+        self.cas_input_cost_matrix[0,0] = self.input_cost_param
+        self.cas_input_cost_matrix[1,1] = self.input_cost_param
         
         #self.cas_input_cost_matrix = cas.DM.zeros(2, 2)
         #self.cas_input_cost_matrix[:, :] = self.input_cost_matrix
@@ -114,7 +115,7 @@ class IdealDiffDriveMPC(Controller):
         # self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
 
         
-        self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat,self.input_cost_matrix_flat)
+        self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat,self.input_cost_param)
         self.lower_bound_input = np.full(2 * self.horizon_length, -self.max_wheel_vel)
         self.upper_bound_input = np.full(2 * self.horizon_length, self.max_wheel_vel)
         self.optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat, "p": self.nlp_params}
@@ -165,11 +166,7 @@ class IdealDiffDriveMPC(Controller):
         self.planar_state = np.array([state[0], state[1], state[5]])
         self.compute_desired_trajectory(self.planar_state)
 
-        input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
-        
-        self.input_cost_matrix_i = input_cost_matrix_i
-        
-        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),input_cost_matrix_i.flatten({'C'})))
+        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),np.array([self.input_cost_wheel])))
 
         self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
                                                            p=nlp_params,
