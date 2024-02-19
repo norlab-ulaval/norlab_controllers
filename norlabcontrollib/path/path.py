@@ -113,7 +113,7 @@ class Path:
         self.compute_distances_to_goal()
         self.compute_curvatures()
         self.compute_look_ahead_curvatures(path_look_ahead_distance)
-        # self.compute_angles()
+        # self.compute_angles()     # Angles taken from WILN
         self.compute_world_to_path_frame_tfs()
         return None
 
