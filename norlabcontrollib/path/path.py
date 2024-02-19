@@ -21,7 +21,7 @@ class Path:
         self.curvatures = np.zeros(self.n_poses)
         self.look_ahead_curvatures = np.zeros(self.n_poses)
         self.distances_to_goal = np.zeros(self.n_poses)
-        self.angles = np.zeros(self.n_poses)
+        self.angles = poses[:, 5]
         self.angles_spatial_window = 0.25
         self.world_to_path_tfs_array = np.ndarray((self.n_poses,3,3))
         self.path_to_world_tfs_array = np.ndarray((self.n_poses,3,3))
@@ -113,7 +113,7 @@ class Path:
         self.compute_distances_to_goal()
         self.compute_curvatures()
         self.compute_look_ahead_curvatures(path_look_ahead_distance)
-        self.compute_angles()
+        # self.compute_angles()
         self.compute_world_to_path_frame_tfs()
         return None
 

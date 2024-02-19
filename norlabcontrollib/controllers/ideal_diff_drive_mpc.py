@@ -4,6 +4,7 @@ from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
 import numpy as np
 from scipy.optimize import minimize
 import casadi as cas
+import math
 
 class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
@@ -97,6 +98,7 @@ class IdealDiffDriveMPC(Controller):
         for i in range(1, self.horizon_length):
             self.x_horizon_list.append(self.single_step_pred(self.x_horizon_list[i - 1], self.u_horizon[i - 1, :]))
             x_error = self.x_ref[:, i] - self.x_horizon_list[i]
+            x_error[2] = cas.atan2(cas.sin(x_error[2]), cas.cos(x_error[2]))
             state_cost = cas.mtimes(cas.mtimes(x_error.T, self.cas_state_cost_matrix), x_error)
             u_error = self.u_ref[i - 1, :] - self.u_horizon[i - 1, :]
             input_cost = cas.mtimes(cas.mtimes(u_error, self.cas_input_cost_matrix), u_error.T)
