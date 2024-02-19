@@ -4,6 +4,7 @@ from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
 import numpy as np
 from scipy.optimize import minimize
 import casadi as cas
+import math
 
 class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
@@ -105,6 +106,7 @@ class IdealDiffDriveMPC(Controller):
         for i in range(1, self.horizon_length):
             self.x_horizon_list.append(self.single_step_pred(self.x_horizon_list[i - 1], self.u_horizon[i - 1, :]))
             x_error = self.x_ref[:, i] - self.x_horizon_list[i]
+            x_error[2] = cas.atan2(cas.sin(x_error[2]), cas.cos(x_error[2]))
             state_cost = cas.mtimes(cas.mtimes(x_error.T, self.cas_state_cost_matrix), x_error)
             u_error = self.u_ref[i - 1, :] - self.u_horizon[i - 1, :]
             input_cost = cas.mtimes(cas.mtimes(u_error, self.cas_input_cost_matrix), u_error.T)
@@ -132,15 +134,11 @@ class IdealDiffDriveMPC(Controller):
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
     
     def compute_orthogonal_projection(self, state):
-        self.orthogonal_projection_dists, self.orthogonal_projection_ids = self.path.compute_orthogonal_projection(state[:2], self.last_path_pose_id, self.query_knn, self.query_radius)
-        for i in range(0, self.orthogonal_projection_ids.shape[0]):
-            if np.abs(self.orthogonal_projection_ids[i] - self.last_path_pose_id) <= self.id_window_size:
-                self.orthogonal_projection_id = self.orthogonal_projection_ids[i]
-                self.orthogonal_projection_dist = self.orthogonal_projection_dists[i]
-                self.last_path_pose_id = self.orthogonal_projection_id
-                break
+        window_size = max(self.path.n_poses, self.id_window_size)
+        self.orthogonal_projection_dist, self.orthogonal_projection_id = \
+            self.path.compute_orthogonal_projection(state[:2], self.last_path_pose_id, self.id_window_size)
+        self.last_path_pose_id = self.orthogonal_projection_id  # Updated twice, to validate
         return None
-
 
     def compute_desired_trajectory(self, state):
         self.compute_orthogonal_projection(state)
@@ -189,3 +187,4 @@ class IdealDiffDriveMPC(Controller):
         self.compute_distance_to_goal(state, self.orthogonal_projection_id)
         self.last_path_pose_id = self.orthogonal_projection_id
         return body_input_array.reshape(2)
+
