@@ -24,7 +24,7 @@ class IdealDiffDriveMPC(Controller):
         self.state_cost_matrix[1,1] = self.state_cost_translational
         self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.input_cost_wheel = parameter_map['input_cost_wheel']
-        #self.input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
+        self.input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
         self.angular_velocity_gain = parameter_map['angular_velocity_gain']
 
         self.wheel_radius = parameter_map['wheel_radius']
@@ -169,7 +169,7 @@ class IdealDiffDriveMPC(Controller):
         
         self.input_cost_matrix_i = input_cost_matrix_i
         
-        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),input_cost_matrix_i.flatten({'C'})))
+        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),input_cost_matrix_i.flatten('C')))
 
         self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
                                                            p=nlp_params,
