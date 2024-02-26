@@ -17,15 +17,23 @@ class IdealDiffDriveMPC(Controller):
         self.number_states = 3
         self.number_inputs = 2
 
+        self.function_to_re_init = False
+        self.param_that_start_init = ['maximum_linear_velocity','horizon_length','angular_velocity_gain']
+
         self.horizon_length = parameter_map['horizon_length']
         self.state_cost_translational = parameter_map['state_cost_translational']
         self.state_cost_rotational = parameter_map['state_cost_rotational']
-        self.state_cost_matrix = np.eye(3)
-        self.state_cost_matrix[0,0] = self.state_cost_translational
-        self.state_cost_matrix[1,1] = self.state_cost_translational
-        self.state_cost_matrix[2,2] = self.state_cost_rotational
+        
+
+        #self.state_cost_matrix = np.eye(3)
+        #self.state_cost_matrix[0,0] = self.state_cost_translational
+        #self.state_cost_matrix[1,1] = self.state_cost_translational
+        #self.state_cost_matrix[2,2] = self.state_cost_rotational
+
         self.input_cost_wheel = parameter_map['input_cost_wheel']
         self.input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
+        
+        
         self.angular_velocity_gain = parameter_map['angular_velocity_gain']
 
         self.wheel_radius = parameter_map['wheel_radius']
@@ -34,25 +42,31 @@ class IdealDiffDriveMPC(Controller):
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
         self.last_path_pose_id = 0
+        
+        self.init_casadi_model()
+
+    def init_casadi_model(self):
+        ### Init value moved to be able to reset casadi init 
         self.orthogonal_projection_ids_horizon = np.zeros(self.horizon_length).astype('int32')
         self.orthogonal_projection_dists_horizon = np.zeros(self.horizon_length)
         self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
-
         self.ideal_diff_drive = Ideal_diff_drive(self.wheel_radius, self.baseline, 1/self.rate)
-
+        
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
         self.max_wheel_vel = self.ideal_diff_drive.compute_wheel_vels(np.array([self.maximum_linear_velocity, 0]))[0]
         self.previous_input_array = np.zeros((2, self.horizon_length))
+        
+        
         self.nd_input_array = np.zeros((2, self.horizon_length))
         self.target_trajectory = np.zeros((3, self.horizon_length))
         self.optim_trajectory_array = np.zeros((3, self.horizon_length))
         self.straight_line_input = np.full(2*self.horizon_length, 1.0)
         self.straight_line_input[self.horizon_length:] = np.full(self.horizon_length, 2.0)
-
-        self.init_casadi_model()
-
-    def init_casadi_model(self):
+        ########
+        # Add the self. casadi angular_velocity_gain as a value 
+        #self.cas_angular_velocity_gain = cas.SX.sym('angular_velocity_gain', 1)
+        # 
         self.R = cas.SX.eye(3)
         self.J = cas.SX(3, 2)
         self.J[0, :] = self.wheel_radius / 2
@@ -63,6 +77,7 @@ class IdealDiffDriveMPC(Controller):
         self.casadi_x = cas.SX.sym('x', 3)
         self.casadi_u = cas.SX.sym('u', 2)
 
+        
         self.R[0, 0] = cas.cos(self.casadi_x[2])
         self.R[1, 1] = cas.cos(self.casadi_x[2])
         self.R[0, 1] = -cas.sin((self.casadi_x[2]))
@@ -86,18 +101,29 @@ class IdealDiffDriveMPC(Controller):
         self.x_ref[1, :] = self.x_ref_flat[self.horizon_length:2 * self.horizon_length]
         self.x_ref[2, :] = self.x_ref_flat[2 * self.horizon_length:3 * self.horizon_length]
         # self.x_ref[:, :] = self.target_trajectory
-        self.cas_state_cost_matrix = cas.DM.zeros(3, 3)
-        self.cas_state_cost_matrix[:, :] = self.state_cost_matrix
+        
         self.u_ref = cas.DM.zeros(2, self.horizon_length)
         self.u_ref[:, :] = self.previous_input_array
         self.u_ref = self.u_ref.T
 
         # Change self.cas_input_cost_matrix as SX
-        self.input_cost_param = cas.SX.sym('input_cost_param', 1)
+        self.cas_input_cost_param = cas.SX.sym('input_cost_param', 1)
         self.cas_input_cost_matrix = cas.SX.eye(2)
+        self.cas_input_cost_matrix[0,0] = self.cas_input_cost_param
+        self.cas_input_cost_matrix[1,1] = self.cas_input_cost_param
 
-        self.cas_input_cost_matrix[0,0] = self.input_cost_param
-        self.cas_input_cost_matrix[1,1] = self.input_cost_param
+        # Change state cost matrix (the next commented line are for information)
+        # self.state_cost_matrix = np.eye(3)
+        # self.state_cost_matrix[0,0] = self.state_cost_translational
+        # self.state_cost_matrix[1,1] = self.state_cost_translational
+        # self.state_cost_matrix[2,2] = self.state_cost_rotational
+        self.cas_state_cost_translational = cas.SX.sym('state_cost_translationnal', 1)
+        self.cas_state_cost_rotationnal = cas.SX.sym('state_cost_rotationnal', 1)
+        
+        self.cas_state_cost_matrix = cas.SX.eye(3)
+        self.cas_state_cost_matrix[0,0] = self.cas_state_cost_translational
+        self.cas_state_cost_matrix[1,1] = self.cas_state_cost_translational
+        self.cas_state_cost_matrix[2,2] = self.cas_state_cost_rotationnal
         
         #self.cas_input_cost_matrix = cas.DM.zeros(2, 2)
         #self.cas_input_cost_matrix[:, :] = self.input_cost_matrix
@@ -117,13 +143,16 @@ class IdealDiffDriveMPC(Controller):
         # self.pred_cost = cas.Function('pred_cost', [self.u_horizon_flat], [self.prediction_cost])
 
         
-        self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat,self.input_cost_param)
+        self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat,self.cas_input_cost_param,
+        self.cas_state_cost_translational,self.cas_state_cost_rotationnal) # self.cas_angular_velocity_gain
         self.lower_bound_input = np.full(2 * self.horizon_length, -self.max_wheel_vel)
         self.upper_bound_input = np.full(2 * self.horizon_length, self.max_wheel_vel)
         self.optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat, "p": self.nlp_params}
         self.nlpsol_opts = {'verbose_init': False, 'print_in': False, 'print_out': False, 'print_time': False,
                             'verbose': False, 'ipopt': {'print_level': 0}}
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
+        # Casadi has been re_init. 
+        self.function_to_re_init = False
 
     def update_path(self, new_path):
         self.path = new_path
@@ -161,10 +190,16 @@ class IdealDiffDriveMPC(Controller):
         return None
 
     def compute_command_vector(self, state):
+
+        if self.function_to_re_init:
+            self.init_casadi_model()
+
         self.planar_state = np.array([state[0], state[1], state[5]])
         self.compute_desired_trajectory(self.planar_state)
 
-        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),np.array([self.input_cost_wheel])))
+        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),
+        np.array([self.input_cost_wheel]),np.array([self.state_cost_translational]),
+        np.array([self.state_cost_rotational]),np.array([self.angular_velocity_gain])))
 
         self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
                                                            p=nlp_params,
