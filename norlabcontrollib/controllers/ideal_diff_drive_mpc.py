@@ -199,7 +199,7 @@ class IdealDiffDriveMPC(Controller):
 
         nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),
         np.array([self.input_cost_wheel]),np.array([self.state_cost_translational]),
-        np.array([self.state_cost_rotational]),np.array([self.angular_velocity_gain])))
+        np.array([self.state_cost_rotational]))) #,np.array([self.angular_velocity_gain]
 
         self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
                                                            p=nlp_params,
