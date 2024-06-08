@@ -1,8 +1,5 @@
 import numpy as np
-from scipy.spatial import KDTree
 from math import ceil, floor
-
-import time
 
 class Path:
     def __init__(self, poses):
@@ -13,10 +10,6 @@ class Path:
         self.planar_poses[:, 1] = poses[:, 1]
         self.n_poses = self.poses.shape[0]
         print('Number of poses in path:', self.n_poses)
-
-        start = time.time()
-        self.pose_kdtree = KDTree(poses[:, :2])
-        print('Time to compute kd tree:', time.time() - start)
 
         self.curvatures = np.zeros(self.n_poses)
         self.look_ahead_curvatures = np.zeros(self.n_poses)
@@ -121,8 +114,78 @@ class Path:
         first_idx, last_idx = floor(max(0, last_id - window_size/2)), ceil(min(self.n_poses, last_id + window_size/2))
         window_points = self.poses[first_idx:last_idx, :2]
         distances = np.linalg.norm(window_points - pose[:2], axis=1)
-        closest_id = np.argmin(distances)
-        closest_dist = distances[closest_id]
-        return closest_dist, closest_id + first_idx
+        closest_idx, second_idx = np.argsort(distances)[:2]
+
+        idx1, idx2 = first_idx + min(closest_idx, second_idx), first_idx + max(closest_idx, second_idx)
+        ptA, ptB = self.poses[idx1, :2], self.poses[idx2, :2]
+        AB, AP = ptB - ptA, pose[:2] - ptA
+        t = np.dot(AP, AB) / np.dot(AB, AB)
+
+        closest_point = ptA + t * AB
+        yaw = t * self.angles[idx2] + (1 - t) * self.angles[idx1]
+        closest_pose = np.array([closest_point[0], closest_point[1], yaw])
+        return closest_pose, idx2
+    
+    def compute_horizon(self, initial_pose, start_idx, horizon_distance):
+        horizon_poses = [initial_pose]
+        stop_idx = start_idx
+        distance = 0.0
+        while distance < horizon_distance and stop_idx < self.n_poses:
+            distance += np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2])
+            horizon_poses.append(np.array([self.poses[stop_idx, 0], self.poses[stop_idx, 1], self.angles[stop_idx]]))
+            stop_idx += 1
+
+        return np.array(horizon_poses), stop_idx
 
 # TODO: find a way to split path into multiple directional paths to switch robot direction
+
+
+# if __name__ == "__main__":
+#     import numpy as np
+#     import matplotlib.pyplot as plt
+
+#     def interpolate_path(points, distances):
+#         """
+#         Interpolate points along a path based on the cumulative distance traveled.
+        
+#         :param points: List of (x, y) coordinates [(x1, y1), (x2, y2), ...]
+#         :param distances: List of distances at which to interpolate new points
+#         :return: List of interpolated (x, y) coordinates
+#         """
+#         points = np.array(points)
+#         num_points = len(points)
+        
+#         # Calculate the cumulative distance at each point
+#         cumulative_distances = np.zeros(num_points)
+#         for i in range(1, num_points):
+#             cumulative_distances[i] = cumulative_distances[i - 1] + np.linalg.norm(points[i] - points[i - 1])
+        
+#         # Interpolate x and y coordinates separately using numpy.interp
+#         interp_x = np.interp(distances, cumulative_distances, points[:, 0])
+#         interp_y = np.interp(distances, cumulative_distances, points[:, 1])
+        
+#         # Combine interpolated x and y coordinates
+#         interpolated_points = list(zip(interp_x, interp_y))
+        
+#         return interpolated_points
+
+#     # Example usage
+#     path = [(0, 0), (-1, 2), (4, 6), (7, -2)]
+#     distances_to_interpolate = [0, 2, 4, 6, 8, 10, 12]
+
+#     interpolated_points = interpolate_path(path, distances_to_interpolate)
+#     print("Interpolated points:", interpolated_points)
+
+#     # Plot the original path and the interpolated points
+#     path = np.array(path)
+#     interpolated_points = np.array(interpolated_points)
+
+#     plt.figure(figsize=(8, 6))
+#     plt.plot(path[:, 0], path[:, 1], 'o-', label='Original Path')
+#     plt.plot(interpolated_points[:, 0], interpolated_points[:, 1], 'x', label='Interpolated Points')
+#     plt.xlabel('X')
+#     plt.ylabel('Y')
+#     plt.title('Path Interpolation')
+#     plt.legend()
+#     plt.grid(True)
+#     plt.show()
