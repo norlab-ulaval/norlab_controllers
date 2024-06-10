@@ -168,18 +168,33 @@ class IdealDiffDriveMPC(Controller):
 
         # Find the final index of the horizon
         horizon_distance = self.maximum_linear_velocity / self.rate * self.horizon_length
-        horizon_poses, _ = self.path.compute_horizon(closest_pose, self.next_path_idx, horizon_distance)
+        horizon_poses, max_distance = self.path.compute_horizon(closest_pose, self.next_path_idx, horizon_distance)
+        horizon_distance = min(horizon_distance, max_distance)
 
         # Compute the desired trajectory by interpolating the horizon path
         cumulative_distances = np.zeros(len(horizon_poses))
         for i in range(1, len(horizon_poses)):
             cumulative_distances[i] = cumulative_distances[i - 1] + np.linalg.norm(horizon_poses[i, :2] - horizon_poses[i - 1, :2])
         
-        interp_distances = np.linspace(0, horizon_distance, self.horizon_length+1)
+        interp_distances = np.linspace(0, horizon_distance, self.horizon_length)
         interp_x = np.interp(interp_distances, cumulative_distances, horizon_poses[:, 0])
         interp_y = np.interp(interp_distances, cumulative_distances, horizon_poses[:, 1])
         interp_yaw = np.interp(interp_distances, cumulative_distances, horizon_poses[:, 2])        
         interp_poses = list(zip(interp_x, interp_y, interp_yaw))
+
+        # TO BE TESTED
+
+        # Compute yaw rates and scale distances
+        # yaw_rates = np.abs(np.diff(horizon_poses[:, 2]))
+        # yaw_rates = np.append(yaw_rates, yaw_rates[-1])  # Keep the length same as horizon_poses
+        # scaled_distances = cumulative_distances * (1 + yaw_rates)
+        # scaled_distances = scaled_distances / scaled_distances[-1] * horizon_distance  # Normalize to horizon_distance
+
+        # interp_distances = np.linspace(0, horizon_distance, self.horizon_length)
+        # interp_x = np.interp(interp_distances, scaled_distances, horizon_poses[:, 0])
+        # interp_y = np.interp(interp_distances, scaled_distances, horizon_poses[:, 1])
+        # interp_yaw = np.interp(interp_distances, scaled_distances, horizon_poses[:, 2])        
+        # interp_poses = list(zip(interp_x, interp_y, interp_yaw))
 
         self.target_trajectory = np.array(interp_poses).T
 
@@ -187,7 +202,10 @@ class IdealDiffDriveMPC(Controller):
     def compute_command_vector(self, state):
         self.planar_state = np.array([state[0], state[1], state[5]])
         self.compute_desired_trajectory(self.planar_state)
-        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C')))
+        nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),
+            np.array([self.input_cost_wheel]), np.array([self.state_cost_translational]),
+            np.array([self.state_cost_rotational])
+        )) #,np.array([self.angular_velocity_gain]
         self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
                                                            p=nlp_params,
                                                            lbx= self.lower_bound_input,

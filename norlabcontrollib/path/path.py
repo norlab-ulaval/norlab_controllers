@@ -135,7 +135,7 @@ class Path:
             horizon_poses.append(np.array([self.poses[stop_idx, 0], self.poses[stop_idx, 1], self.angles[stop_idx]]))
             stop_idx += 1
 
-        return np.array(horizon_poses), stop_idx
+        return np.array(horizon_poses), distance
 
 # TODO: find a way to split path into multiple directional paths to switch robot direction
 
