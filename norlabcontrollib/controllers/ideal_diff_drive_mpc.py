@@ -175,7 +175,7 @@ class IdealDiffDriveMPC(Controller):
         for i in range(1, len(horizon_poses)):
             cumulative_distances[i] = cumulative_distances[i - 1] + np.linalg.norm(horizon_poses[i, :2] - horizon_poses[i - 1, :2])
         
-        interp_distances = np.linspace(0, horizon_distance, self.horizon_length)
+        interp_distances = np.linspace(0, horizon_distance, self.horizon_length+1)
         interp_x = np.interp(interp_distances, cumulative_distances, horizon_poses[:, 0])
         interp_y = np.interp(interp_distances, cumulative_distances, horizon_poses[:, 1])
         interp_yaw = np.interp(interp_distances, cumulative_distances, horizon_poses[:, 2])        
@@ -192,22 +192,18 @@ class IdealDiffDriveMPC(Controller):
                                                            p=nlp_params,
                                                            lbx= self.lower_bound_input,
                                                            ubx= self.upper_bound_input)['x']
-        self.previous_input_array[0, :] = np.array(self.optim_control_solution[:self.horizon_length]).reshape(self.horizon_length)
-        self.previous_input_array[1, :] = np.array(self.optim_control_solution[self.horizon_length:]).reshape(self.horizon_length)
+
         self.optimal_left = self.optim_control_solution[0]
         self.optimal_right = self.optim_control_solution[self.horizon_length]
-        wheel_input_array = np.array([self.optim_control_solution[0], self.optim_control_solution[self.horizon_length]]).reshape(2,1)
+        wheel_input_array = np.array([self.optimal_left, self.optimal_right]).reshape(2,1)
         body_input_array = self.ideal_diff_drive.compute_body_vel(wheel_input_array).astype('float64')
 
         optim_trajectory = self.horizon_pred(self.planar_state, self.optim_control_solution)
         self.optim_solution_array = np.array(self.optim_control_solution)
-        self.optim_trajectory_array[0, :] = optim_trajectory[0, :]
-        self.optim_trajectory_array[1, :] = optim_trajectory[1, :]
-        self.optim_trajectory_array[2, :] = optim_trajectory[2, :]
+        self.optim_trajectory_array[0:2, :] = optim_trajectory[0:2, :]
         self.previous_input_array[0, :] = self.optim_solution_array[:self.horizon_length].reshape(self.horizon_length)
         self.previous_input_array[1, :] = self.optim_solution_array[self.horizon_length:].reshape(self.horizon_length)
-        self.compute_distance_to_goal(state, self.orthogonal_projection_id)
-        self.next_path_idx = self.orthogonal_projection_id
+        self.compute_distance_to_goal(state, self.next_path_idx)
         return body_input_array.reshape(2)
 
 
