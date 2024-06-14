@@ -126,16 +126,30 @@ class Path:
         closest_pose = np.array([closest_point[0], closest_point[1], yaw])
         return closest_pose, idx2
     
-    def compute_horizon(self, initial_pose, start_idx, horizon_distance):
+    # def compute_horizon(self, initial_pose, start_idx, horizon_distance):
+    #     horizon_poses = [initial_pose]
+    #     stop_idx = start_idx
+    #     distance = 0.0
+    #     while distance < horizon_distance and stop_idx < self.n_poses:
+    #         distance += np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2])
+    #         horizon_poses.append(np.array([self.poses[stop_idx, 0], self.poses[stop_idx, 1], self.angles[stop_idx]]))
+    #         stop_idx += 1
+
+    #     return np.array(horizon_poses), distance
+    
+    def compute_horizon(self, initial_pose, start_idx, horizon_duration, linear_speed, angular_speed):
         horizon_poses = [initial_pose]
         stop_idx = start_idx
-        distance = 0.0
-        while distance < horizon_distance and stop_idx < self.n_poses:
-            distance += np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2])
+        cumul_duration = [0.0]
+        while cumul_duration[-1] < horizon_duration and stop_idx < self.n_poses:
+            travel_time = np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2]) / linear_speed + \
+                        np.abs(self.angles[stop_idx] - horizon_poses[-1][2]) / angular_speed
+            cumul_duration.append(cumul_duration[-1] + travel_time)
             horizon_poses.append(np.array([self.poses[stop_idx, 0], self.poses[stop_idx, 1], self.angles[stop_idx]]))
             stop_idx += 1
 
-        return np.array(horizon_poses), distance
+        return np.array(horizon_poses), cumul_duration
+
 
 # TODO: find a way to split path into multiple directional paths to switch robot direction
 
