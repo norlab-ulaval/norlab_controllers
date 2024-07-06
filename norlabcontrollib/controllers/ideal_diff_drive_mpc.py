@@ -1,5 +1,5 @@
 from norlabcontrollib.controllers.controller import Controller
-from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
+from norlabcontrollib.models.ideal_diff_drive import IdealDiffDrive
 from norlabcontrollib.util.util_func import interp_angles, wrap2pi
 
 import numpy as np
@@ -49,29 +49,22 @@ class IdealDiffDriveMPC(Controller):
         self.orthogonal_projection_ids_horizon = np.zeros(self.horizon_length).astype('int32')
         self.orthogonal_projection_dists_horizon = np.zeros(self.horizon_length)
         self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
-        self.ideal_diff_drive = Ideal_diff_drive(self.wheel_radius, self.baseline, 1/self.rate)
+        self.motion_model = IdealDiffDrive(self.wheel_radius, self.baseline, 1/self.rate, self.angular_velocity_gain)
         
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
-        self.max_wheel_vel = self.ideal_diff_drive.compute_wheel_vels(np.array([self.maximum_linear_velocity, 0]))[0]
+        self.max_wheel_vel = self.motion_model.compute_wheel_vels(np.array([self.maximum_linear_velocity, 0]))[0]
         self.previous_input_array = np.zeros((2, self.horizon_length))
-        
         
         self.nd_input_array = np.zeros((2, self.horizon_length))
         self.target_trajectory = np.zeros((3, self.horizon_length))
         self.optim_trajectory_array = np.zeros((3, self.horizon_length))
         self.straight_line_input = np.full(2*self.horizon_length, 1.0)
         self.straight_line_input[self.horizon_length:] = np.full(self.horizon_length, 2.0)
-        ########
-        # Add the self. casadi angular_velocity_gain as a value 
-        #self.cas_angular_velocity_gain = cas.SX.sym('angular_velocity_gain', 1)
-        # 
+  
         self.R = cas.SX.eye(3)
         self.J = cas.SX(3, 2)
-        self.J[0, :] = self.wheel_radius / 2
-        self.J[1, :] = 0
-        self.J[2, 0] = -self.angular_velocity_gain * self.wheel_radius / self.baseline
-        self.J[2, 1] = self.angular_velocity_gain * self.wheel_radius / self.baseline
+        self.J = self.motion_model.jacobian_3x2
 
         self.casadi_x = cas.SX.sym('x', 3)
         self.casadi_u = cas.SX.sym('u', 2)
@@ -111,11 +104,6 @@ class IdealDiffDriveMPC(Controller):
         self.cas_input_cost_matrix[0,0] = self.cas_input_cost_param
         self.cas_input_cost_matrix[1,1] = self.cas_input_cost_param
 
-        # Change state cost matrix (the next commented line are for information)
-        # self.state_cost_matrix = np.eye(3)
-        # self.state_cost_matrix[0,0] = self.state_cost_translational
-        # self.state_cost_matrix[1,1] = self.state_cost_translational
-        # self.state_cost_matrix[2,2] = self.state_cost_rotational
         self.cas_state_cost_translational = cas.SX.sym('state_cost_translationnal', 1)
         self.cas_state_cost_rotationnal = cas.SX.sym('state_cost_rotationnal', 1)
         
@@ -124,8 +112,6 @@ class IdealDiffDriveMPC(Controller):
         self.cas_state_cost_matrix[1,1] = self.cas_state_cost_translational
         self.cas_state_cost_matrix[2,2] = self.cas_state_cost_rotationnal
         
-        #self.cas_input_cost_matrix = cas.DM.zeros(2, 2)
-        #self.cas_input_cost_matrix[:, :] = self.input_cost_matrix
         self.prediction_cost = cas.SX(0)
 
         for i in range(1, self.horizon_length):
@@ -143,7 +129,7 @@ class IdealDiffDriveMPC(Controller):
 
         
         self.nlp_params = cas.vertcat(self.x_0, self.x_ref_flat,self.cas_input_cost_param,
-        self.cas_state_cost_translational,self.cas_state_cost_rotationnal) # self.cas_angular_velocity_gain
+        self.cas_state_cost_translational,self.cas_state_cost_rotationnal)
         self.lower_bound_input = np.full(2 * self.horizon_length, -self.max_wheel_vel)
         self.upper_bound_input = np.full(2 * self.horizon_length, self.max_wheel_vel)
         self.optim_problem = {"f": self.prediction_cost, "x": self.u_horizon_flat, "p": self.nlp_params}
@@ -186,7 +172,7 @@ class IdealDiffDriveMPC(Controller):
         nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),
             np.array([self.input_cost_wheel]), np.array([self.state_cost_translational]),
             np.array([self.state_cost_rotational])
-        )) #,np.array([self.angular_velocity_gain]
+        )) 
         self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
                                                            p=nlp_params,
                                                            lbx= self.lower_bound_input,
@@ -195,7 +181,7 @@ class IdealDiffDriveMPC(Controller):
         self.optimal_left = self.optim_control_solution[0]
         self.optimal_right = self.optim_control_solution[self.horizon_length]
         wheel_input_array = np.array([self.optimal_left, self.optimal_right]).reshape(2,1)
-        body_input_array = self.ideal_diff_drive.compute_body_vel(wheel_input_array).astype('float64')
+        body_input_array = self.motion_model.compute_body_vel(wheel_input_array).astype('float64')
 
         optim_trajectory = self.horizon_pred(self.planar_state, self.optim_control_solution)
         self.optim_solution_array = np.array(self.optim_control_solution)

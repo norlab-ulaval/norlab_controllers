@@ -1,16 +1,16 @@
 import numpy as np
 from ..util.transform_algebra import *
 
-class Ideal_diff_drive:
-    def __init__(self, r, baseline, dt):
+class IdealDiffDrive:
+    def __init__(self, r, baseline, dt, rotational_gain=1.0):
         self.dt = dt
         self.r = r
         self.baseline = baseline
         self.jacobian = r * np.array([[0.5, 0.5],
-                                      [-1/(baseline), 1/(baseline)]])
-        self.jacobian_3x3 = r * np.array([[0.5, 0.5],
+                                      [-rotational_gain/(baseline), rotational_gain/(baseline)]])
+        self.jacobian_3x2 = r * np.array([[0.5, 0.5],
                                           [0.0, 0.0],
-                                          [-1/(baseline), 1/(baseline)]])
+                                          [-rotational_gain/(baseline), rotational_gain/(baseline)]])
 
         self.inv_jacobian = np.linalg.inv(self.jacobian)
         self.rotation_body_to_world = np.eye(2)
