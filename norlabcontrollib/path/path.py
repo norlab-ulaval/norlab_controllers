@@ -1,5 +1,6 @@
 import numpy as np
 from math import ceil, floor
+from norlabcontrollib.util.util_func import wrap2pi
 
 class Path:
     def __init__(self, poses):
@@ -9,7 +10,6 @@ class Path:
         self.planar_poses[:, 0] = poses[:, 0]
         self.planar_poses[:, 1] = poses[:, 1]
         self.n_poses = self.poses.shape[0]
-        print('Number of poses in path:', self.n_poses)
 
         self.curvatures = np.zeros(self.n_poses)
         self.look_ahead_curvatures = np.zeros(self.n_poses)
@@ -118,11 +118,17 @@ class Path:
 
         idx1, idx2 = first_idx + min(closest_idx, second_idx), first_idx + max(closest_idx, second_idx)
         ptA, ptB = self.poses[idx1, :2], self.poses[idx2, :2]
-        AB, AP = ptB - ptA, pose[:2] - ptA
-        t = np.dot(AP, AB) / np.dot(AB, AB)
+        if np.linalg.norm(ptB - ptA) < 1e-6:
+            closest_point = ptB
+        elif np.linalg.norm(pose[:2] - ptA) < 1e-6:
+            closest_point = ptA
+        else:
+            AB, AP = ptB - ptA, pose[:2] - ptA
+            t = np.dot(AP, AB) / np.dot(AB, AB)
+            closest_point = ptA + t * AB
 
-        closest_point = ptA + t * AB
-        yaw = t * self.angles[idx2] + (1 - t) * self.angles[idx1]
+        # yaw = t * self.angles[idx2] + (1 - t) * self.angles[idx1]
+        yaw = pose[2]
         closest_pose = np.array([closest_point[0], closest_point[1], yaw])
         return closest_pose, idx2
     
@@ -142,8 +148,9 @@ class Path:
         stop_idx = start_idx
         cumul_duration = [0.0]
         while cumul_duration[-1] < horizon_duration and stop_idx < self.n_poses:
-            travel_time = np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2]) / linear_speed + \
-                        np.abs(self.angles[stop_idx] - horizon_poses[-1][2]) / angular_speed
+            linear_error = np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2])
+            angular_error = np.abs(wrap2pi(self.poses[stop_idx, 5] - horizon_poses[-1][2]))
+            travel_time = linear_error / linear_speed + angular_error / angular_speed
             cumul_duration.append(cumul_duration[-1] + travel_time)
             horizon_poses.append(np.array([self.poses[stop_idx, 0], self.poses[stop_idx, 1], self.angles[stop_idx]]))
             stop_idx += 1

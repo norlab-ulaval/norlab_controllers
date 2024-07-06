@@ -1,5 +1,6 @@
 from norlabcontrollib.controllers.controller import Controller
 from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
+from norlabcontrollib.util.util_func import interp_angles, wrap2pi
 
 import numpy as np
 from scipy.optimize import minimize
@@ -10,8 +11,6 @@ class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
-        self.query_radius = parameter_map['query_radius']
-        self.query_knn = parameter_map['query_knn']
         self.id_window_size = parameter_map['id_window_size']
 
         self.number_states = 3
@@ -164,17 +163,18 @@ class IdealDiffDriveMPC(Controller):
 
     def compute_desired_trajectory(self, state):
         # Find closest point on path
-        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(state[:2], self.next_path_idx, self.id_window_size)
+        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(state, self.next_path_idx, self.id_window_size)
 
-        # Find the final index of the horizon
+        # Find the points on the path that are accessible within the horizon
         horizon_duration = self.horizon_length / self.rate
         horizon_poses, cumul_duration = self.path.compute_horizon(closest_pose, self.next_path_idx, horizon_duration, self.maximum_linear_velocity, self.maximum_angular_velocity)
         horizon_length = min(self.horizon_length, cumul_duration[-1])
         
+        # Interpolate the poses to get the desired trajectory
         interp_distances = np.linspace(0, horizon_length, self.horizon_length)
         interp_x = np.interp(interp_distances, cumul_duration, horizon_poses[:, 0])
         interp_y = np.interp(interp_distances, cumul_duration, horizon_poses[:, 1])
-        interp_yaw = np.interp(interp_distances, cumul_duration, horizon_poses[:, 2])        
+        interp_yaw = interp_angles(interp_distances, cumul_duration, horizon_poses[:, 2])   
         interp_poses = list(zip(interp_x, interp_y, interp_yaw))
 
         self.target_trajectory = np.array(interp_poses).T
@@ -199,7 +199,7 @@ class IdealDiffDriveMPC(Controller):
 
         optim_trajectory = self.horizon_pred(self.planar_state, self.optim_control_solution)
         self.optim_solution_array = np.array(self.optim_control_solution)
-        self.optim_trajectory_array[0:2, :] = optim_trajectory[0:2, :]
+        self.optim_trajectory_array[0:3, :] = optim_trajectory[0:3, :]
         self.previous_input_array[0, :] = self.optim_solution_array[:self.horizon_length].reshape(self.horizon_length)
         self.previous_input_array[1, :] = self.optim_solution_array[self.horizon_length:].reshape(self.horizon_length)
         self.compute_distance_to_goal(state, self.next_path_idx)
@@ -213,72 +213,120 @@ if __name__ == "__main__":
     parameter_map = {
         'maximum_linear_velocity': 2.0,
         'minimum_linear_velocity': 0.1,
-        'maximum_angular_velocity': 0.5,
+        'maximum_angular_velocity': 1.0,
         'goal_tolerance': 0.5,
         'path_look_ahead_distance': 2.0,
-        'query_radius': 50,
-        'query_knn': 10,
         'id_window_size': 50,
-        'horizon_length': 80,
+        'horizon_length': 40,
         'state_cost_translational': 1.0,
         'state_cost_rotational': 0.2,
-        'input_cost_wheel': 0.0001,
+        'input_cost_wheel': 0.001,
         'angular_velocity_gain': 1.0,
         'wheel_radius': 0.3,
         'baseline': 1.2,
         'rate': 20.0,
     }
 
-    robot_pose = np.array([-0.1, 1.7, 0.0, 0.0, 0.0, 1.6])
-
-    dummy_path = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 0.3, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 0.6, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 0.9, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 1.2, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 1.5, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 1.8, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 2.1, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 2.4, 0.0, 0.0, 0.0, 1.6],
-                           [0.0, 2.4, 0.0, 0.0, 0.0, 1.2],
-                           [0.0, 2.4, 0.0, 0.0, 0.0, 0.8],
-                           [0.0, 2.4, 0.0, 0.0, 0.0, 0.4],
-                           [0.0, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [0.3, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [0.6, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [0.9, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [1.2, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [1.5, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [1.8, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [2.1, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [2.4, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [2.7, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [3.0, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [3.3, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [3.6, 2.4, 0.0, 0.0, 0.0, 0.0],
-                           [3.9, 2.4, 0.0, 0.0, 0.0, 0.0],
+    dummy_path = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-0.3, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-0.6, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-0.9, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-1.2, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-1.5, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-1.8, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-2.1, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-2.4, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-2.7, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-3.0, 0.0, 0.0, 0.0, 0.0, np.pi],
+                        [-3.0, 0.0, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -0.3, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -0.6, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -0.9, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -1.2, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -1.5, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -1.8, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -2.1, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -2.4, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -2.7, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -3.0, 0.0, 0.0, 0.0, -np.pi/2],
+                        [-3.0, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-2.7, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-2.4, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-2.1, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-1.8, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-1.5, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-1.2, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-0.9, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-0.6, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [-0.3, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, -3.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, -3.0, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -2.7, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -2.4, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -2.1, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -1.8, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -1.5, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -1.2, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -0.9, 0.0, 0.0, 0.0, np.pi/2],
+                        [0.0, -0.6, 0.0, 0.0, 0.0, np.pi/2]
     ])
+
+    def reverse_path(path):
+        reversed_path = np.copy(path)
+        reversed_path = reversed_path[::-1]
+        for i, yaw in enumerate(reversed_path[:, 5]):
+            reversed_path[i, 5] = wrap2pi(yaw + np.pi)
+        return reversed_path
+
+    dummy_path = reverse_path(dummy_path)
+
+    robot_pose = np.array([0.5, -0.1, 0.0, 0.0, 0.0, -1.0])
 
     controller = IdealDiffDriveMPC(parameter_map)
     controller.update_path(Path(dummy_path))
-    controller.compute_desired_trajectory(robot_pose)
     controller.compute_command_vector(robot_pose)
 
-    print('Target trajectory:', controller.target_trajectory)
+    # print('Target trajectory:', controller.target_trajectory)
+
+    def on_key_press(event):
+
+        global controller, robot_pose
+        
+        robot_pose = [
+            controller.optim_trajectory_array[0, 1],
+            controller.optim_trajectory_array[1, 1],
+            0.0,
+            0.0,
+            0.0,
+            wrap2pi(controller.optim_trajectory_array[2, 1])
+        ]
+        controller.compute_command_vector(robot_pose)
+
+        fig.clear()
+        draw_plot()
+        fig.canvas.draw()
+
+
+    def draw_plot():
+        plt.plot(dummy_path[:, 0], dummy_path[:, 1], 'ro-', label='Reference Path')
+        plt.scatter(controller.target_trajectory[0, 0], controller.target_trajectory[1, 0], c='g', label='Orthogonal Projection')
+        plt.plot(controller.target_trajectory[0, 1:], controller.target_trajectory[1, 1:], 'bo', label='Horizon Trajectory')
+        plt.quiver(controller.target_trajectory[0, 1:], controller.target_trajectory[1, 1:], np.cos(controller.target_trajectory[2, 1:]), np.sin(controller.target_trajectory[2, 1:]), color='b', label='Horizon Trajectory')
+        plt.plot(controller.optim_trajectory_array[0, 1:], controller.optim_trajectory_array[1, 1:], 'yo', label='Optimal Trajectory')
+        plt.quiver(controller.optim_trajectory_array[0, 1:], controller.optim_trajectory_array[1, 1:], np.cos(controller.optim_trajectory_array[2, 1:]), np.sin(controller.optim_trajectory_array[2, 1:]), color='y', label='Optimal Trajectory')
+        plt.scatter(robot_pose[0], robot_pose[1], c='k', label='Robot Pose')
+        plt.quiver(robot_pose[0], robot_pose[1], np.cos(robot_pose[5]), np.sin(robot_pose[5]), color='k')
+        plt.axis('equal')
+        plt.legend()
 
     # Plot trajectory
     import matplotlib.pyplot as plt
-    plt.plot(dummy_path[:, 0], dummy_path[:, 1], 'ro-', label='Reference Path')
-    plt.scatter(controller.target_trajectory[0, 0], controller.target_trajectory[1, 0], c='g', label='Orthogonal Projection')
-    plt.plot(controller.target_trajectory[0, 1:], controller.target_trajectory[1, 1:], 'bo', label='Horizon Trajectory')
-    plt.plot(controller.optim_trajectory_array[0, 1:], controller.optim_trajectory_array[1, 1:], 'yo', label='Optimal Trajectory')
-    plt.scatter(robot_pose[0], robot_pose[1], c='k', label='Robot Pose')
-    
-    # Display robot orientation (x-forward)
-    plt.quiver(robot_pose[0], robot_pose[1], np.cos(robot_pose[5]), np.sin(robot_pose[5]), color='k')
-    
-    plt.axis('equal')
-    plt.legend()
+    fig = plt.figure()
+    draw_plot()
+
+    # Connect the event handler to the figure
+    fig.canvas.mpl_connect('key_press_event', on_key_press)
+
     plt.show()
 
 

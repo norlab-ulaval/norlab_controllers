@@ -1,4 +1,4 @@
 numpy
 scipy
 PyYAML
-casadi==3.6.0
+casadi==3.6.5
