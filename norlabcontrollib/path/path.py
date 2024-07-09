@@ -110,27 +110,73 @@ class Path:
         self.compute_world_to_path_frame_tfs()
         return None
 
+    # def compute_orthogonal_projection(self, pose, last_id, window_size):
+    #     first_idx, last_idx = floor(max(0, last_id - window_size/2)), ceil(min(self.n_poses, last_id + window_size/2))
+    #     window_points = self.poses[first_idx:last_idx, :2]
+    #     distances = np.linalg.norm(window_points - pose[:2], axis=1)
+    #     closest_idx = np.argsort(distances)[0]
+        
+    #     prev_idx = closest_idx - 1
+    #     next_idx = closest_idx + 1
+    #     center1 = np.mean([window_points[closest_idx], window_points[prev_idx]])
+    #     center2 = np.mean([window_points[closest_idx], window_points[next_idx]])
+
+    #     idx1, idx2 = first_idx + min(closest_idx, second_idx), first_idx + max(closest_idx, second_idx)
+    #     ptA, ptB = self.poses[idx1, :2], self.poses[idx2, :2]
+    #     if np.linalg.norm(ptB - ptA) < 1e-6:
+    #         closest_point = ptB
+    #     elif np.linalg.norm(pose[:2] - ptA) < 1e-6:
+    #         closest_point = ptA
+    #     else:
+    #         AB, AP = ptB - ptA, pose[:2] - ptA
+    #         t = np.dot(AP, AB) / np.dot(AB, AB)
+    #         closest_point = ptA + t * AB
+
+    #     # yaw = t * self.angles[idx2] + (1 - t) * self.angles[idx1]
+    #     yaw = pose[2]
+    #     closest_pose = np.array([closest_point[0], closest_point[1], yaw])
+    #     return closest_pose, idx2
+
     def compute_orthogonal_projection(self, pose, last_id, window_size):
         first_idx, last_idx = floor(max(0, last_id - window_size/2)), ceil(min(self.n_poses, last_id + window_size/2))
         window_points = self.poses[first_idx:last_idx, :2]
-        distances = np.linalg.norm(window_points - pose[:2], axis=1)
-        closest_idx, second_idx = np.argsort(distances)[:2]
+        min_distance = float('inf')
+        closest_projection = None
+        next_idx = 0
+        for i in range(len(window_points) - 1):
+            a = np.array(window_points[i])
+            b = np.array(window_points[i + 1])
+            projection = self.project_point_onto_line_segment(pose[:2], a, b)
+            distance = np.linalg.norm(pose[:2] - projection)
+            if distance < min_distance:
+                min_distance = distance
+                closest_projection = projection
+                next_idx = first_idx + i + 1
 
-        idx1, idx2 = first_idx + min(closest_idx, second_idx), first_idx + max(closest_idx, second_idx)
-        ptA, ptB = self.poses[idx1, :2], self.poses[idx2, :2]
-        if np.linalg.norm(ptB - ptA) < 1e-6:
-            closest_point = ptB
-        elif np.linalg.norm(pose[:2] - ptA) < 1e-6:
-            closest_point = ptA
-        else:
-            AB, AP = ptB - ptA, pose[:2] - ptA
-            t = np.dot(AP, AB) / np.dot(AB, AB)
-            closest_point = ptA + t * AB
-
-        # yaw = t * self.angles[idx2] + (1 - t) * self.angles[idx1]
         yaw = pose[2]
-        closest_pose = np.array([closest_point[0], closest_point[1], yaw])
-        return closest_pose, idx2
+        closest_pose = np.array([closest_projection[0], closest_projection[1], yaw])
+        print(f"Closest pose: {closest_pose}, Next idx: {next_idx}")
+        return closest_pose, next_idx
+    
+    def project_point_onto_line_segment(self, p, a, b):
+        """Project point p onto line segment ab.
+        Args:
+        - p (np.array): The point to project.
+        - a (np.array): The start point of the line segment.
+        - b (np.array): The end point of the line segment.
+        
+        Returns:
+        - np.array: The projected point on the line segment.
+        """
+        ap = p - a
+        ab = b - a
+        ab_norm = np.dot(ab, ab)
+        if ab_norm == 0:
+            return a  # a and b are the same point
+        t = np.dot(ap, ab) / ab_norm
+        t = np.clip(t, 0, 1)
+        projection = a + t * ab
+        return projection
     
     # def compute_horizon(self, initial_pose, start_idx, horizon_distance):
     #     horizon_poses = [initial_pose]

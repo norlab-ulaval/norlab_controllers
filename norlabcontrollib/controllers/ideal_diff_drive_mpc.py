@@ -154,13 +154,13 @@ class IdealDiffDriveMPC(Controller):
         # Find the points on the path that are accessible within the horizon
         horizon_duration = self.horizon_length / self.rate
         horizon_poses, cumul_duration = self.path.compute_horizon(closest_pose, self.next_path_idx, horizon_duration, self.maximum_linear_velocity, self.maximum_angular_velocity)
-        horizon_length = min(self.horizon_length, cumul_duration[-1])
+        horizon_duration = min(horizon_duration, cumul_duration[-1])
         
         # Interpolate the poses to get the desired trajectory
-        interp_distances = np.linspace(0, horizon_length, self.horizon_length)
-        interp_x = np.interp(interp_distances, cumul_duration, horizon_poses[:, 0])
-        interp_y = np.interp(interp_distances, cumul_duration, horizon_poses[:, 1])
-        interp_yaw = interp_angles(interp_distances, cumul_duration, horizon_poses[:, 2])   
+        interp_duration = np.linspace(0, horizon_duration, self.horizon_length)
+        interp_x = np.interp(interp_duration, cumul_duration, horizon_poses[:, 0])
+        interp_y = np.interp(interp_duration, cumul_duration, horizon_poses[:, 1])
+        interp_yaw = interp_angles(interp_duration, cumul_duration, horizon_poses[:, 2])   
         interp_poses = list(zip(interp_x, interp_y, interp_yaw))
 
         self.target_trajectory = np.array(interp_poses).T
