@@ -93,25 +93,25 @@ class FullBodySlipBayesianLinearRegression:
         np.save(param_directory_path + 'b_param_n_yaw.npy', self.body_yaw_slip_blr.b_param_n)
 
     def load_params(self, param_directory_path):
-        self.body_x_slip_blr.weights = np.load(param_directory_path + 'weights_x.npy')
-        self.body_y_slip_blr.weights = np.load(param_directory_path + 'weights_y.npy')
-        self.body_yaw_slip_blr.weights = np.load(param_directory_path + 'weights_yaw.npy')
+        self.body_x_slip_blr.weights = np.load(param_directory_path / 'weights_x.npy')
+        self.body_y_slip_blr.weights = np.load(param_directory_path / 'weights_y.npy')
+        self.body_yaw_slip_blr.weights = np.load(param_directory_path / 'weights_yaw.npy')
 
-        self.body_x_slip_blr.params_covariance = np.load(param_directory_path + 'covariance_x.npy')
-        self.body_y_slip_blr.params_covariance = np.load(param_directory_path + 'covariance_y.npy')
-        self.body_yaw_slip_blr.params_covariance = np.load(param_directory_path + 'covariance_yaw.npy')
+        self.body_x_slip_blr.params_covariance = np.load(param_directory_path / 'covariance_x.npy')
+        self.body_y_slip_blr.params_covariance = np.load(param_directory_path / 'covariance_y.npy')
+        self.body_yaw_slip_blr.params_covariance = np.load(param_directory_path / 'covariance_yaw.npy')
 
         self.body_x_slip_blr.inv_params_covariance = np.linalg.inv(self.body_x_slip_blr.params_covariance)
         self.body_y_slip_blr.inv_params_covariance = np.linalg.inv(self.body_y_slip_blr.params_covariance)
         self.body_yaw_slip_blr.inv_params_covariance = np.linalg.inv(self.body_yaw_slip_blr.params_covariance)
 
-        self.body_x_slip_blr.a_param_n = np.load(param_directory_path + 'a_param_n_x.npy')
-        self.body_y_slip_blr.a_param_n = np.load(param_directory_path + 'a_param_n_y.npy')
-        self.body_yaw_slip_blr.a_param_n = np.load(param_directory_path + 'a_param_n_yaw.npy')
+        self.body_x_slip_blr.a_param_n = np.load(param_directory_path / 'a_param_n_x.npy')
+        self.body_y_slip_blr.a_param_n = np.load(param_directory_path / 'a_param_n_y.npy')
+        self.body_yaw_slip_blr.a_param_n = np.load(param_directory_path / 'a_param_n_yaw.npy')
 
-        self.body_x_slip_blr.b_param_n = np.load(param_directory_path + 'b_param_n_x.npy')
-        self.body_y_slip_blr.b_param_n = np.load(param_directory_path + 'b_param_n_y.npy')
-        self.body_yaw_slip_blr.b_param_n = np.load(param_directory_path + 'b_param_n_yaw.npy')
+        self.body_x_slip_blr.b_param_n = np.load(param_directory_path / 'b_param_n_x.npy')
+        self.body_y_slip_blr.b_param_n = np.load(param_directory_path / 'b_param_n_y.npy')
+        self.body_yaw_slip_blr.b_param_n = np.load(param_directory_path / 'b_param_n_yaw.npy')
 
     def compute_body_vel(self, input):
         return self.jacobian @ input

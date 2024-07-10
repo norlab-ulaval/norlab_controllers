@@ -2,6 +2,7 @@ from norlabcontrollib.controllers.differential_orthogonal_exponential import Dif
 from norlabcontrollib.controllers.differential_rotation_p import DifferentialRotationP
 from norlabcontrollib.controllers.ideal_diff_drive_mpc import IdealDiffDriveMPC
 from norlabcontrollib.controllers.pwrtrn_diff_drive_mpc import PwrtrnDiffDriveMPC
+from norlabcontrollib.controllers.slip_blr_pwrtrn_diff_drive_mpc import SlipBLRPwrtrnDiffDriveMPC
 from norlabcontrollib.controllers.slip_blr_diff_drive_smpc import SlipBLRDiffDriveSMPC
 import yaml
 
@@ -20,6 +21,8 @@ class ControllerFactory:
                 controller = IdealDiffDriveMPC(yaml_params)
             elif yaml_params['controller_name'] == 'PwrtrnDiffDriveMPC':
                 controller = PwrtrnDiffDriveMPC(yaml_params)
+            elif yaml_params['controller_name'] == 'SlipBLRPwrtrnDiffDriveMPC':
+                controller = SlipBLRPwrtrnDiffDriveMPC(yaml_params)
             elif yaml_params['controller_name'] == 'SlipBLRDiffDriveSMPC':
                 controller = SlipBLRDiffDriveSMPC(yaml_params)
             else:
