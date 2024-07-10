@@ -6,6 +6,7 @@ import numpy as np
 from scipy.optimize import minimize
 import casadi as cas
 import math
+from pathlib import Path
 
 class PwrtrnDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
@@ -38,12 +39,20 @@ class PwrtrnDiffDriveMPC(Controller):
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
 
+        install_directory_path = Path.cwd().parent.parent
+        share_params_directory_path = list(Path.cwd().parts[-2:])
+        share_params_directory_path[0] = 'share'
+        share_params_directory_path = Path(*share_params_directory_path)
+        absolute_path = install_directory_path.joinpath(share_params_directory_path)
         pwrtrn_param_path = parameter_map['pwrtrn_param_path']
-        pwrtrn_params_left = np.load(pwrtrn_param_path + 'powertrain_training_left.npy')
+        # TODO: Exception if yaml-defined pwrtrn param path has a foward slash at the start
+        # TODO: Define default pwrtrn params that mean instant powertrain reaction
+
+        pwrtrn_params_left = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_left.npy')
         self.time_constant_left = pwrtrn_params_left[0]
         self.time_delay_left = pwrtrn_params_left[1]
         self.time_delay_left_integer = int(np.floor(self.time_delay_left / (1 / self.rate)))
-        pwrtrn_params_right = np.load(pwrtrn_param_path + 'powertrain_training_right.npy')
+        pwrtrn_params_right = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_right.npy')
         self.time_constant_right = pwrtrn_params_right[0]
         self.time_delay_right = pwrtrn_params_right[1]
         self.time_delay_right_integer = int(np.floor(self.time_delay_right / (1 / self.rate)))
