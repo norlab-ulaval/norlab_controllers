@@ -17,7 +17,15 @@ class IdealDiffDriveMPC(Controller):
         self.number_inputs = 2
 
         self.function_to_re_init = False
-        self.param_that_start_init = ['maximum_linear_velocity','horizon_length','angular_velocity_gain']
+        self.param_that_start_init = [
+            'maximum_linear_velocity',
+            'minimum_linear_velocity',
+            'maximum_angular_velocity',
+            'horizon_length',
+            'angular_velocity_gain',
+            'wheel_radius',
+            'baseline'
+        ]
 
         self.horizon_length = parameter_map['horizon_length']
         self.state_cost_translational = parameter_map['state_cost_translational']
