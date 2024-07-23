@@ -3,9 +3,7 @@ from norlabcontrollib.models.ideal_diff_drive import IdealDiffDrive
 from norlabcontrollib.util.util_func import interp_angles, wrap2pi
 
 import numpy as np
-from scipy.optimize import minimize
 import casadi as cas
-import math
 
 class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):

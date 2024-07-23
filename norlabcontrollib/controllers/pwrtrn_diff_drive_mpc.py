@@ -3,9 +3,7 @@ from norlabcontrollib.models.ideal_diff_drive import IdealDiffDrive
 from norlabcontrollib.util.util_func import interp_angles, wrap2pi
 
 import numpy as np
-from scipy.optimize import minimize
 import casadi as cas
-import math
 from pathlib import Path
 
 class PwrtrnDiffDriveMPC(Controller):
@@ -17,25 +15,14 @@ class PwrtrnDiffDriveMPC(Controller):
         self.number_states = 3
         self.number_inputs = 2
 
-        self.function_to_re_init = False
-        self.param_that_start_init = ['maximum_linear_velocity','horizon_length','angular_velocity_gain']
-
         self.horizon_length = parameter_map['horizon_length']
         self.state_cost_translational = parameter_map['state_cost_translational']
         self.state_cost_rotational = parameter_map['state_cost_rotational']
-        
-
-        #self.state_cost_matrix = np.eye(3)
-        #self.state_cost_matrix[0,0] = self.state_cost_translational
-        #self.state_cost_matrix[1,1] = self.state_cost_translational
-        #self.state_cost_matrix[2,2] = self.state_cost_rotational
 
         self.input_cost_wheel = parameter_map['input_cost_wheel']
         self.input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
         
-        
         self.angular_velocity_gain = parameter_map['angular_velocity_gain']
-
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
 
@@ -60,6 +47,7 @@ class PwrtrnDiffDriveMPC(Controller):
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
         self.next_path_idx = 0
+        self.next_command_id = 0
         
         self.init_casadi_model()
 
@@ -219,7 +207,19 @@ class PwrtrnDiffDriveMPC(Controller):
         self.previous_input_array[0, :] = self.optim_solution_array[:self.horizon_length].reshape(self.horizon_length)
         self.previous_input_array[1, :] = self.optim_solution_array[self.horizon_length:].reshape(self.horizon_length)
         self.compute_distance_to_goal(state, self.next_path_idx)
+        self.next_command_id = 1
         return body_input_array.reshape(2)
+    
+    def get_next_command(self):
+        if self.next_command_id < self.horizon_length:
+            self.optimal_left = self.optim_control_solution[self.next_command_id]
+            self.optimal_right = self.optim_control_solution[self.next_command_id + self.horizon_length]
+            wheel_input_array = np.array([self.optimal_left, self.optimal_right]).reshape(2,1)
+            body_input_array = self.motion_model.compute_body_vel(wheel_input_array).astype('float64')
+            self.next_command_id += 1
+        else:
+            body_input_array = np.array([0.0, 0.0]) # Stop if we never receive odom
+        return body_input_array.reshape(2), self.next_command_id-1
 
 
 if __name__ == "__main__":
@@ -298,7 +298,7 @@ if __name__ == "__main__":
 
     robot_pose = np.array([0.5, -0.1, 0.0, 0.0, 0.0, -1.0])
 
-    controller = IdealDiffDriveMPC(parameter_map)
+    controller = PwrtrnDiffDriveMPC(parameter_map)
     controller.update_path(Path(dummy_path))
     controller.compute_command_vector(robot_pose)
 

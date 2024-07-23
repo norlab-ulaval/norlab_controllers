@@ -8,11 +8,13 @@ class Controller(metaclass=ABCMeta):
         self.maximum_linear_velocity = parameter_map['maximum_linear_velocity']
         self.maximum_angular_velocity = parameter_map['maximum_angular_velocity']
         self.goal_tolerance = parameter_map['goal_tolerance']
-        # For dynamic [parameter]
-        self.function_to_re_init = False
-        self.param_that_start_init = []
+
     @abstractmethod
     def compute_command_vector(self, state):
+        pass
+    
+    @abstractmethod
+    def get_next_command(self):
         pass
 
     def update_path(self, new_path):
