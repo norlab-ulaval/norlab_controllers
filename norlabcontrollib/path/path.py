@@ -155,7 +155,6 @@ class Path:
 
         yaw = pose[2]
         closest_pose = np.array([closest_projection[0], closest_projection[1], yaw])
-        print(f"Closest pose: {closest_pose}, Next idx: {next_idx}")
         return closest_pose, next_idx
     
     def project_point_onto_line_segment(self, p, a, b):
