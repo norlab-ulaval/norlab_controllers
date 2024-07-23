@@ -2,3 +2,4 @@ build/
 dist/
 norlabcontrollib.egg-info/
 __pycache__/
+.python-version
