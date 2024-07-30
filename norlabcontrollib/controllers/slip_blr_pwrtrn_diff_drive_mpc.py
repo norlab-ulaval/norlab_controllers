@@ -340,7 +340,7 @@ if __name__ == "__main__":
 
     robot_pose = np.array([0.5, -0.1, 0.0, 0.0, 0.0, -1.0])
 
-    controller = IdealDiffDriveMPC(parameter_map)
+    controller = SlipBLRPwrtrnDiffDriveMPC(parameter_map)
     controller.update_path(Path(dummy_path))
     controller.compute_command_vector(robot_pose)
 
