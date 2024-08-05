@@ -32,14 +32,26 @@ class PwrtrnDiffDriveMPC(Controller):
         share_params_directory_path = Path(*share_params_directory_path)
         absolute_path = install_directory_path.joinpath(share_params_directory_path)
         pwrtrn_param_path = parameter_map['pwrtrn_param_path']
-        # TODO: Exception if yaml-defined pwrtrn param path has a foward slash at the start
+        
         # TODO: Define default pwrtrn params that mean instant powertrain reaction
 
-        pwrtrn_params_left = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_left.npy')
+        # TODO: Exception if yaml-defined pwrtrn param path has a foward slash at the start
+        if pwrtrn_param_path[0] =="/":
+            print("\n"*5,"take a chance on me ","\n"*5)
+            pwrtrn_params_left = np.load( Path(pwrtrn_param_path) / 'powertrain_training_left.npy')
+            pwrtrn_params_right = np.load(Path(pwrtrn_param_path) / 'powertrain_training_right.npy')
+            
+        
+        else:
+            pwrtrn_params_left = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_left.npy')
+            pwrtrn_params_right = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_right.npy')
+        # TODO: Define default pwrtrn params that mean instant powertrain reaction
+        
+        
         self.time_constant_left = pwrtrn_params_left[0]
         self.time_delay_left = pwrtrn_params_left[1]
         self.time_delay_left_integer = int(np.floor(self.time_delay_left / (1 / self.rate)))
-        pwrtrn_params_right = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_right.npy')
+        
         self.time_constant_right = pwrtrn_params_right[0]
         self.time_delay_right = pwrtrn_params_right[1]
         self.time_delay_right_integer = int(np.floor(self.time_delay_right / (1 / self.rate)))

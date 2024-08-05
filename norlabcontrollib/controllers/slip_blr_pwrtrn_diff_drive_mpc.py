@@ -33,14 +33,23 @@ class SlipBLRPwrtrnDiffDriveMPC(Controller):
         share_params_directory_path = Path(*share_params_directory_path)
         absolute_path = install_directory_path.joinpath(share_params_directory_path)
         pwrtrn_param_path = parameter_map['pwrtrn_param_path']
-        # TODO: Exception if yaml-defined pwrtrn param path has a foward slash at the start
+        
+        if pwrtrn_param_path[0] =="/":
+            print("\n"*5,"take a chance on me ","\n"*5)
+            pwrtrn_params_left = np.load( Path(pwrtrn_param_path) / 'powertrain_training_left.npy')
+            pwrtrn_params_right = np.load(Path(pwrtrn_param_path) / 'powertrain_training_right.npy')
+            
+        
+        else:
+            pwrtrn_params_left = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_left.npy')
+            pwrtrn_params_right = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_right.npy')
         # TODO: Define default pwrtrn params that mean instant powertrain reaction
-
-        pwrtrn_params_left = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_left.npy')
+        
+        
         self.time_constant_left = pwrtrn_params_left[0]
         self.time_delay_left = pwrtrn_params_left[1]
         self.time_delay_left_integer = int(np.floor(self.time_delay_left / (1 / self.rate)))
-        pwrtrn_params_right = np.load(absolute_path / pwrtrn_param_path / 'powertrain_training_right.npy')
+        
         self.time_constant_right = pwrtrn_params_right[0]
         self.time_delay_right = pwrtrn_params_right[1]
         self.time_delay_right_integer = int(np.floor(self.time_delay_right / (1 / self.rate)))
@@ -56,7 +65,15 @@ class SlipBLRPwrtrnDiffDriveMPC(Controller):
                                                                        param_variance_init, variance_init,
                                                                        self.baseline,
                                                                        self.wheel_radius, 1 / self.rate, kappa_param)
-        self.full_body_slip_blr.load_params(absolute_path / blr_params_path)
+        
+        
+        if blr_params_path[0] =="/":
+            print("\n"*5,"take a chance on me ","\n"*5)
+            slip_blr_absolut_path = Path(blr_params_path)        
+        else:
+            slip_blr_absolut_path = absolute_path / blr_params_path
+
+        self.full_body_slip_blr.load_params(slip_blr_absolut_path)
 
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
@@ -268,22 +285,24 @@ if __name__ == "__main__":
 
     from norlabcontrollib.path.path import Path
     
-    parameter_map = {
-        'maximum_linear_velocity': 2.0,
-        'minimum_linear_velocity': 0.1,
-        'maximum_angular_velocity': 1.0,
-        'goal_tolerance': 0.5,
-        'path_look_ahead_distance': 2.0,
-        'id_window_size': 50,
-        'horizon_length': 40,
-        'state_cost_translational': 1.0,
-        'state_cost_rotational': 0.2,
-        'input_cost_wheel': 0.001,
-        'angular_velocity_gain': 1.0,
-        'wheel_radius': 0.3,
-        'baseline': 1.2,
-        'rate': 20.0,
-    }
+    parameter_map = {    
+    "controller_name": 'SlipBLRPwrtrnDiffDriveMPC',
+    "rate": 20,
+    "minimum_linear_velocity": 0.2,
+    "maximum_linear_velocity": 3.0,
+    "maximum_angular_velocity": 2.0,
+    "goal_tolerance": 0.3,
+    "path_look_ahead_distance": 1.5,
+    "id_window_size": 20,
+    "horizon_length": 30,
+    "state_cost_translational": 2.0,
+    "state_cost_rotational": 0.5,
+    "input_cost_wheel": 0.05, #last test 0.005
+    "angular_velocity_gain": 1.0,
+    "wheel_radius": 0.285,
+    "baseline": 1.08,
+    "pwrtrn_param_path": '/home/nicolassamson/ros2_ws/src/norlab_controllers_ros/norlab_controllers_wrapper/params/warthog_wheels/gravel/trained_params/powertrain',
+    "slip_blr_param_path": "/home/nicolassamson/ros2_ws/src/norlab_controllers_ros/norlab_controllers_wrapper/params/warthog_wheels/gravel/trained_params/slip/blr/steady-state"}
 
     dummy_path = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, np.pi],
                         [-0.3, 0.0, 0.0, 0.0, 0.0, np.pi],
