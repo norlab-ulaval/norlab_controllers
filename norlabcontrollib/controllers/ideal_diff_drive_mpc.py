@@ -1,11 +1,15 @@
-from norlabcontrollib.controllers.controller import Controller
-from norlabcontrollib.models.ideal_diff_drive import IdealDiffDrive
-from norlabcontrollib.util.util_func import interp_angles, wrap2pi
+import math
 
+import casadi as cas
+import networkx as nx
 import numpy as np
 from scipy.optimize import minimize
-import casadi as cas
-import math
+
+from norlabcontrollib.controllers.controller import Controller
+from norlabcontrollib.models.ideal_diff_drive import IdealDiffDrive
+from norlabcontrollib.path.cost_map import ImgCostMap
+from norlabcontrollib.util.util_func import interp_angles, wrap2pi
+
 
 class IdealDiffDriveMPC(Controller):
     def __init__(self, parameter_map):
@@ -49,7 +53,8 @@ class IdealDiffDriveMPC(Controller):
         self.distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
         self.next_path_idx = 0
-        
+        self.cost_map = None        
+
         self.init_casadi_model()
 
     def init_casadi_model(self):
@@ -151,9 +156,25 @@ class IdealDiffDriveMPC(Controller):
         self.path = new_path
         return None
     
+    def update_cost_map(self, new_cost_map):
+        self.cost_map = new_cost_map
+
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
+
+    def compute_path_cost(self, indexed_path):
+        if self.cost_map is None or self.cost_map.graph is None:
+            return 0
+        
+        path_cost = 0
+        for i in range(len(indexed_path) - 1):
+            u = indexed_path[i]
+            v = indexed_path[i + 1]
+            edge_weight = self.cost_map.graph[u][v]['weight']
+            path_cost += edge_weight
+        
+        return path_cost
 
     def compute_desired_trajectory(self, state):
         # Find closest point on path
@@ -163,7 +184,46 @@ class IdealDiffDriveMPC(Controller):
         horizon_duration = self.horizon_length / self.rate
         horizon_poses, cumul_duration = self.path.compute_horizon(closest_pose, self.next_path_idx, horizon_duration, self.maximum_linear_velocity, self.maximum_angular_velocity)
         horizon_duration = min(horizon_duration, cumul_duration[-1])
-        
+
+        # Moving the points according to the cost map
+        if self.cost_map is not None:
+            cost_graph = self.cost_map.graph
+            indexed_path = [self.cost_map.get_indexes((x, y)) for x, y, _ in horizon_poses]
+
+            # Making sure that each point is connected to the next one
+            for i in range(len(indexed_path) - 1):
+                u = indexed_path[i]
+                v = indexed_path[i + 1]
+                if not cost_graph.has_edge(u, v):
+                    weight = nx.dijkstra_path_length(cost_graph, source=u, target=v, weight='weight')
+                    cost_graph.add_edge(u, v, weight=weight)
+            
+            indexed_path_cost = self.compute_path_cost(indexed_path)
+
+            indexed_shortest_path = nx.dijkstra_path(cost_graph, source=indexed_path[0], target=indexed_path[-1], weight='weight')
+            shortest_path_cost = self.compute_path_cost(indexed_shortest_path)
+
+            if shortest_path_cost < indexed_path_cost:
+                shortest_path = np.array([self.cost_map.get_coords(index) for index in indexed_shortest_path])
+
+                # Adding yaw to dijkstra shortest path
+                new_shortest_path = []
+                for i in range(len(shortest_path) - 1):
+                    x1, y1 = shortest_path[i]
+                    x2, y2 = shortest_path[i + 1]
+
+                    yaw = np.arctan2(y2 - y1, x2 - x1)
+                    new_shortest_path.append((x1, y1, 0.0, 0.0, 0.0, yaw))
+                new_shortest_path.append((shortest_path[-1][0], shortest_path[-1][1], 0.0, 0.0, 0.0, new_shortest_path[-1][2]))
+                new_shortest_path = np.array(new_shortest_path)
+
+                # Re-computing horizon with new path
+                new_path = Path(new_shortest_path)
+                closest_pose = [new_shortest_path[0, 0], new_shortest_path[0, 1], new_shortest_path[0, 5]]
+                
+                horizon_poses, cumul_duration = new_path.compute_horizon(closest_pose, 1, horizon_duration, self.maximum_linear_velocity, self.maximum_angular_velocity)
+                horizon_duration = min(horizon_duration, cumul_duration[-1])
+
         # Interpolate the poses to get the desired trajectory
         interp_duration = np.linspace(0, horizon_duration, self.horizon_length)
         interp_x = np.interp(interp_duration, cumul_duration, horizon_poses[:, 0])
@@ -232,7 +292,6 @@ if __name__ == "__main__":
                         [-2.4, 0.0, 0.0, 0.0, 0.0, np.pi],
                         [-2.7, 0.0, 0.0, 0.0, 0.0, np.pi],
                         [-3.0, 0.0, 0.0, 0.0, 0.0, np.pi],
-                        [-3.0, 0.0, 0.0, 0.0, 0.0, -np.pi/2],
                         [-3.0, -0.3, 0.0, 0.0, 0.0, -np.pi/2],
                         [-3.0, -0.6, 0.0, 0.0, 0.0, -np.pi/2],
                         [-3.0, -0.9, 0.0, 0.0, 0.0, -np.pi/2],
@@ -243,7 +302,6 @@ if __name__ == "__main__":
                         [-3.0, -2.4, 0.0, 0.0, 0.0, -np.pi/2],
                         [-3.0, -2.7, 0.0, 0.0, 0.0, -np.pi/2],
                         [-3.0, -3.0, 0.0, 0.0, 0.0, -np.pi/2],
-                        [-3.0, -3.0, 0.0, 0.0, 0.0, 0.0],
                         [-2.7, -3.0, 0.0, 0.0, 0.0, 0.0],
                         [-2.4, -3.0, 0.0, 0.0, 0.0, 0.0],
                         [-2.1, -3.0, 0.0, 0.0, 0.0, 0.0],
@@ -254,7 +312,6 @@ if __name__ == "__main__":
                         [-0.6, -3.0, 0.0, 0.0, 0.0, 0.0],
                         [-0.3, -3.0, 0.0, 0.0, 0.0, 0.0],
                         [0.0, -3.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, -3.0, 0.0, 0.0, 0.0, np.pi/2],
                         [0.0, -2.7, 0.0, 0.0, 0.0, np.pi/2],
                         [0.0, -2.4, 0.0, 0.0, 0.0, np.pi/2],
                         [0.0, -2.1, 0.0, 0.0, 0.0, np.pi/2],
@@ -273,14 +330,16 @@ if __name__ == "__main__":
         return reversed_path
 
     dummy_path = reverse_path(dummy_path)
-
     robot_pose = np.array([0.5, -0.1, 0.0, 0.0, 0.0, -1.0])
+
+    cost_map = ImgCostMap("test.png", (0.25, 0.25), (-4, 1), (-4, 1))
 
     controller = IdealDiffDriveMPC(parameter_map)
     controller.update_path(Path(dummy_path))
-    controller.compute_command_vector(robot_pose)
+    controller.update_cost_map(cost_map)
 
-    # print('Target trajectory:', controller.target_trajectory)
+    # Get first command
+    controller.compute_command_vector(robot_pose)
 
     def on_key_press(event):
 
@@ -302,14 +361,16 @@ if __name__ == "__main__":
 
 
     def draw_plot():
-        plt.plot(dummy_path[:, 0], dummy_path[:, 1], 'ro-', label='Reference Path')
+        cost_map.plot()
+        scale = 50
+        plt.quiver(dummy_path[:, 0], dummy_path[:, 1], np.cos(dummy_path[:, 5]), np.sin(dummy_path[:, 5]), color='red', label='Reference Path', scale=scale)
         plt.scatter(controller.target_trajectory[0, 0], controller.target_trajectory[1, 0], c='g', label='Orthogonal Projection')
-        plt.plot(controller.target_trajectory[0, 1:], controller.target_trajectory[1, 1:], 'bo', label='Horizon Trajectory')
-        plt.quiver(controller.target_trajectory[0, 1:], controller.target_trajectory[1, 1:], np.cos(controller.target_trajectory[2, 1:]), np.sin(controller.target_trajectory[2, 1:]), color='b', label='Horizon Trajectory')
-        plt.plot(controller.optim_trajectory_array[0, 1:], controller.optim_trajectory_array[1, 1:], 'yo', label='Optimal Trajectory')
-        plt.quiver(controller.optim_trajectory_array[0, 1:], controller.optim_trajectory_array[1, 1:], np.cos(controller.optim_trajectory_array[2, 1:]), np.sin(controller.optim_trajectory_array[2, 1:]), color='y', label='Optimal Trajectory')
-        plt.scatter(robot_pose[0], robot_pose[1], c='k', label='Robot Pose')
-        plt.quiver(robot_pose[0], robot_pose[1], np.cos(robot_pose[5]), np.sin(robot_pose[5]), color='k')
+        # plt.plot(controller.target_trajectory[0, 1:], controller.target_trajectory[1, 1:], 'bo', label='Horizon Trajectory')
+        plt.quiver(controller.target_trajectory[0, 1:], controller.target_trajectory[1, 1:], np.cos(controller.target_trajectory[2, 1:]), np.sin(controller.target_trajectory[2, 1:]), color='b', label='Horizon Trajectory', scale=scale)
+        # plt.plot(controller.optim_trajectory_array[0, 1:], controller.optim_trajectory_array[1, 1:], 'yo', label='Optimal Trajectory')
+        plt.quiver(controller.optim_trajectory_array[0, 1:], controller.optim_trajectory_array[1, 1:], np.cos(controller.optim_trajectory_array[2, 1:]), np.sin(controller.optim_trajectory_array[2, 1:]), color='y', label='Optimal Trajectory', scale=scale)
+        # plt.scatter(robot_pose[0], robot_pose[1], c='k', color='gray', label='Robot Pose')
+        plt.quiver(robot_pose[0], robot_pose[1], np.cos(robot_pose[5]), np.sin(robot_pose[5]), color='gray', scale=scale)
         plt.axis('equal')
         plt.legend()
 
