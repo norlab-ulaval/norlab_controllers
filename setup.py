@@ -14,7 +14,7 @@ setup(
     install_requires=['numpy',
                       'scipy',
                       'pyyaml',
-                      'casadi==3.6.0'],
+                      'casadi==3.6.5'],
     setup_requires=[],
     tests_require=[],
     test_suite='tests',
