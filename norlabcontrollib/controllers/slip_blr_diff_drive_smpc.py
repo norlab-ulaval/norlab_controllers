@@ -164,11 +164,6 @@ class SlipBLRDiffDriveSMPC(Controller):
                             'verbose': False, 'ipopt': {'print_level': 0}}
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
 
-
-    def update_path(self, new_path):
-        self.path = new_path
-        return None
-
     def compute_desired_trajectory(self, state):
         self.compute_orthogonal_projection(state)
         target_displacement = 0

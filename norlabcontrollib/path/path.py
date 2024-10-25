@@ -102,10 +102,10 @@ class Path:
             self.path_to_world_tfs_array[i, :, :] = path_to_world_tf
             self.world_to_path_tfs_array[i, :, :] = np.linalg.inv(path_to_world_tf)
 
-    def compute_metrics(self, path_look_ahead_distance):
+    def compute_metrics(self):
         self.compute_distances_to_goal()
-        self.compute_curvatures()
-        self.compute_look_ahead_curvatures(path_look_ahead_distance)
+        # self.compute_curvatures()
+        # self.compute_look_ahead_curvatures(path_look_ahead_distance)
         # self.compute_angles()     # Angles taken from WILN
         self.compute_world_to_path_frame_tfs()
         return None

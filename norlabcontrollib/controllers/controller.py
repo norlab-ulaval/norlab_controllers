@@ -17,4 +17,5 @@ class Controller(metaclass=ABCMeta):
 
     def update_path(self, new_path):
         self.path = new_path
+        self.path.compute_metrics()
         pass

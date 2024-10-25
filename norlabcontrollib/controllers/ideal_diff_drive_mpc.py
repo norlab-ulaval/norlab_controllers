@@ -128,11 +128,6 @@ class IdealDiffDriveMPC(Controller):
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
         # Casadi has been re_init. 
         self.function_to_re_init = False
-
-    def update_path(self, new_path):
-        self.path = new_path
-        return None
-    
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
@@ -193,6 +188,8 @@ class IdealDiffDriveMPC(Controller):
             body_input_array = np.array([0.0, 0.0]) # Stop if we never receive odom
         return body_input_array.reshape(2), self.next_command_id-1
 
+    def goal_reached(self):
+        return self.distance_to_goal < self.goal_tolerance
 
 if __name__ == "__main__":
 
