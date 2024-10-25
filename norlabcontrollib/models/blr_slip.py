@@ -47,7 +47,7 @@ class FullBodySlipBayesianLinearRegression:
         self.jacobian = radius * np.array([[0.5, 0.5],
                                       [-1 / (baseline), 1 / (baseline)]])
 
-        self.jacobian_3x3 = radius * np.array([[0.5, 0.5],
+        self.jacobian_3x2 = radius * np.array([[0.5, 0.5],
                                           [0.0, 0.0],
                                           [-1 / (baseline), 1 / (baseline)]])
         self.inv_jacobian = np.linalg.inv(self.jacobian)

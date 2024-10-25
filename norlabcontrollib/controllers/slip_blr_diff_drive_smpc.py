@@ -1,5 +1,5 @@
 from norlabcontrollib.controllers.controller import Controller
-from norlabcontrollib.models.ideal_diff_drive import Ideal_diff_drive
+from norlabcontrollib.models.ideal_diff_drive import IdealDiffDrive
 
 from norlabcontrollib.models.blr_slip import FullBodySlipBayesianLinearRegression
 

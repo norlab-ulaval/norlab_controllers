@@ -44,12 +44,7 @@ def quaternion_to_euler(w, x, y, z):
 
 
 def wrap2pi(angle):
-    if angle <= np.pi and angle >= -np.pi:
-        return (angle)
-    elif angle < -np.pi:
-        return (wrap2pi(angle + 2 * np.pi))
-    else:
-        return (wrap2pi(angle - 2 * np.pi))
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
 def comp_disp(x_fut, x_pres):
@@ -96,3 +91,17 @@ def generate_measurement_covariance(prediction_covariance):
             measurement_covariance[i,j] = prediction_covariance[I_vector[i], I_vector[j]] * prediction_covariance[J_vector[i], J_vector[j]] + \
                                           prediction_covariance[I_vector[i], J_vector[j]] * prediction_covariance[J_vector[i], I_vector[j]]
     return measurement_covariance
+
+
+def interp_angles(x, xp, fp):
+    # Used for interpolation of angles, to handle the wrap-around issue.
+    # We convert the angles to complex numbers, perform linear interpolation on the real and imaginary parts,
+    # and then convert the complex numbers back to angles.
+    
+    fp_complex = np.exp(1j * fp)
+    real_interp = np.interp(x, xp, fp_complex.real)
+    imag_interp = np.interp(x, xp, fp_complex.imag)
+    interp_complex = real_interp + 1j * imag_interp
+    interp_angles = np.angle(interp_complex)
+    
+    return wrap2pi(interp_angles)
