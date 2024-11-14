@@ -195,7 +195,7 @@ class Path:
         while cumul_duration[-1] < horizon_duration and stop_idx < self.n_poses:
             linear_error = np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2])
             angular_error = np.abs(wrap2pi(self.poses[stop_idx, 5] - horizon_poses[-1][2]))
-            travel_time = linear_error / linear_speed + angular_error / angular_speed
+            travel_time = max(linear_error / linear_speed, angular_error / angular_speed)
             cumul_duration.append(cumul_duration[-1] + travel_time)
             horizon_poses.append(np.array([self.poses[stop_idx, 0], self.poses[stop_idx, 1], self.angles[stop_idx]]))
             stop_idx += 1

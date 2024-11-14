@@ -8,6 +8,7 @@ import casadi as cas
 import math
 
 class IdealDiffDriveMPC(Controller):
+
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
@@ -33,6 +34,7 @@ class IdealDiffDriveMPC(Controller):
         self.next_command_id = 0
         
         self.init_casadi_model()
+
 
     def init_casadi_model(self):
         ### Init value moved to be able to reset casadi init 
@@ -128,9 +130,12 @@ class IdealDiffDriveMPC(Controller):
         self.optim_problem_solver = cas.nlpsol("optim_problem_solver", "ipopt", self.optim_problem, self.nlpsol_opts)
         # Casadi has been re_init. 
         self.function_to_re_init = False
+
+
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
+
 
     def compute_desired_trajectory(self, state):
         # Find closest point on path
@@ -158,10 +163,12 @@ class IdealDiffDriveMPC(Controller):
             np.array([self.input_cost_wheel]), np.array([self.state_cost_translational]),
             np.array([self.state_cost_rotational])
         )) 
-        self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
-                                                           p=nlp_params,
-                                                           lbx= self.lower_bound_input,
-                                                           ubx= self.upper_bound_input)['x']
+        self.optim_control_solution = self.optim_problem_solver(
+            x0=self.previous_input_array.flatten(),
+            p=nlp_params,
+            lbx= self.lower_bound_input,
+            ubx= self.upper_bound_input
+        )['x']
 
         self.optimal_left = self.optim_control_solution[0]
         self.optimal_right = self.optim_control_solution[self.horizon_length]
@@ -177,6 +184,7 @@ class IdealDiffDriveMPC(Controller):
         self.next_command_id = 1
         return body_input_array.reshape(2)
     
+
     def get_next_command(self):
         if self.next_command_id < self.horizon_length:
             self.optimal_left = self.optim_control_solution[self.next_command_id]
@@ -188,8 +196,10 @@ class IdealDiffDriveMPC(Controller):
             body_input_array = np.array([0.0, 0.0]) # Stop if we never receive odom
         return body_input_array.reshape(2), self.next_command_id-1
 
+
     def goal_reached(self):
         return self.distance_to_goal < self.goal_tolerance
+
 
 if __name__ == "__main__":
 
