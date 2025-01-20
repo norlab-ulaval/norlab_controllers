@@ -189,7 +189,7 @@ class Path:
             b = np.array(window_points[i + 1])[:2]
             projection = self.project_point_onto_line_segment(pose[:2], a, b)
             distance = np.linalg.norm(pose[:2] - projection)
-            angle = wrap2pi(np.abs(pose[2] - window_angles[i]))
+            angle = np.abs(wrap2pi(pose[2] - window_angles[i]))
             if distance < min_distance or (
                 distance == min_distance and angle < min_angle
             ):
