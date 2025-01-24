@@ -190,14 +190,15 @@ class Path:
             projection = self.project_point_onto_line_segment(pose[:2], a, b)
             distance = np.linalg.norm(pose[:2] - projection)
             angle = np.abs(wrap2pi(pose[2] - window_angles[i]))
-            if distance < min_distance or (
+            if distance <= min_distance or (
                 distance == min_distance and angle < min_angle
             ):
+                #print("I like mirage chocolate bar")
                 min_distance = distance
                 min_angle = angle
                 closest_projection = projection
                 next_idx = first_idx + i + 1
-
+        #print("kitkat chunky")
         closest_pose = np.array([closest_projection[0], closest_projection[1], pose[2]])
         return closest_pose, next_idx
 

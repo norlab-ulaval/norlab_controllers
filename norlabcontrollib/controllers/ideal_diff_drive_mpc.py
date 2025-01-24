@@ -29,7 +29,9 @@ class IdealDiffDriveMPC(Controller):
         self.baseline = parameter_map['baseline']
 
         self.distance_to_goal = 100000
-        self.euclidean_distance_to_goal = 100000
+        #self.euclidean_distance_to_goal = 100000
+
+        self.angular_distance_to_goal = np.pi
         self.next_path_idx = 0
         self.next_command_id = 0
         
@@ -133,14 +135,19 @@ class IdealDiffDriveMPC(Controller):
 
 
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
-        self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
-        self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
-
+        #self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
+        
+        self.distance_to_goal =  self.path.distances_to_goal[orthogonal_projection_id] #np.linalg.norm(self.path.poses[-1, :2] - state[:2]) 
+        self.angular_distance_to_goal = wrap2pi(self.path.poses[-1, 2] - state[2])
+        
+        #self.angular_distance_to_goal = 
 
     def compute_desired_trajectory(self, state):
         # Find closest point on path
+        #print("test")
         closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(state, self.next_path_idx, self.id_window_size)
 
+        self.closest_pose = closest_pose
         # Find the points on the path that are accessible within the horizon
         horizon_duration = self.horizon_length / self.rate
         horizon_poses, cumul_duration = self.path.compute_horizon(closest_pose, self.next_path_idx, horizon_duration, self.maximum_linear_velocity, self.maximum_angular_velocity)
@@ -198,7 +205,7 @@ class IdealDiffDriveMPC(Controller):
 
 
     def goal_reached(self):
-        return self.distance_to_goal < self.goal_tolerance
+        return (self.distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_distance_to_goal)
 
 
 if __name__ == "__main__":
@@ -312,7 +319,11 @@ if __name__ == "__main__":
         plt.scatter(robot_pose[0], robot_pose[1], c='k', label='Robot Pose')
         plt.quiver(robot_pose[0], robot_pose[1], np.cos(robot_pose[5]), np.sin(robot_pose[5]), color='k')
         plt.axis('equal')
+        plt.quiver(controller.closest_pose[0],controller.closest_pose[1],np.cos(controller.closest_pose[2]),np.sin(controller.closest_pose[2]),color="cyan",label="closest pose",zorder=10)
         plt.legend()
+        plt.ylim(-3.5,-2.5)
+        plt.xlim(-1,0.5)
+
 
     # Plot trajectory
     import matplotlib.pyplot as plt
