@@ -37,6 +37,7 @@ class IdealDiffDriveMPC(Controller):
         
         self.init_casadi_model()
 
+        self.debug_indicator = [False,False,False]
 
     def init_casadi_model(self):
         ### Init value moved to be able to reset casadi init 
@@ -137,8 +138,13 @@ class IdealDiffDriveMPC(Controller):
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
         #self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
         
-        self.distance_to_goal =  self.path.distances_to_goal[orthogonal_projection_id] #np.linalg.norm(self.path.poses[-1, :2] - state[:2]) 
-        self.angular_distance_to_goal = wrap2pi(self.path.poses[-1, 2] - state[2])
+        distance_2_goal_path = self.path.distances_to_goal[orthogonal_projection_id]
+        euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
+        self.distance_to_goal =  np.max([distance_2_goal_path,euclidean_distance_to_goal]) #np.linalg.norm(self.path.poses[-1, :2] - state[:2]) 
+        
+        pose_angular_distant = np.abs(wrap2pi(self.path.poses[-1, 5] - state[5]))
+        node_angular_distance = np.abs(self.path.angular_distances_to_goal[orthogonal_projection_id])
+        self.angular_distance_to_goal = np.max([pose_angular_distant,node_angular_distance])
         
         #self.angular_distance_to_goal = 
 
@@ -205,7 +211,16 @@ class IdealDiffDriveMPC(Controller):
 
 
     def goal_reached(self):
-        return (self.distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_distance_to_goal)
+
+        if (self.distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
+            
+            return True
+        
+        elif self.distance_to_goal < self.goal_tolerance:
+            self.debug_indicator[0] = True
+        elif np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance:
+            self.debug_indicator[1] = True
+        
 
 
 if __name__ == "__main__":
