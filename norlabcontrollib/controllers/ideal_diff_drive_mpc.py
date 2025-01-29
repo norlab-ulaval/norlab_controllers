@@ -151,8 +151,8 @@ class IdealDiffDriveMPC(Controller):
     def compute_desired_trajectory(self, state):
         # Find closest point on path
         #print("test")
-        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(state, self.next_path_idx, self.id_window_size)
-
+        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(state, self.next_path_idx, self.id_window_size,self.translation_tolerance_node,self.orientation_tolerance_node,self.radius_to_start_localisation)
+        
         self.closest_pose = closest_pose
         # Find the points on the path that are accessible within the horizon
         horizon_duration = self.horizon_length / self.rate
@@ -211,15 +211,16 @@ class IdealDiffDriveMPC(Controller):
 
 
     def goal_reached(self):
-
-        if (self.distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
-            
-            return True
         
-        elif self.distance_to_goal < self.goal_tolerance:
-            self.debug_indicator[0] = True
-        elif np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance:
-            self.debug_indicator[1] = True
+        if self.next_path_idx == (self.path.n_poses-1):
+            if (self.distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
+                
+                return True
+            
+            elif self.distance_to_goal < self.goal_tolerance:
+                self.debug_indicator[0] = True
+            elif np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance:
+                self.debug_indicator[1] = True
         
 
 

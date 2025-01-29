@@ -9,6 +9,9 @@ class Controller(metaclass=ABCMeta):
         self.maximum_angular_velocity = parameter_map['maximum_angular_velocity']
         self.goal_tolerance = parameter_map['goal_tolerance']
         self.angular_goal_tolerance = parameter_map["angular_goal_tolerance"]
+        self.translation_tolerance_node = parameter_map["translation_tolerance_node"]
+        self.orientation_tolerance_node = parameter_map["orientation_tolerance_node"]
+        self.radius_to_start_localisation = parameter_map["radius_to_start_localisation"]
         # For dynamic [parameter]
         self.function_to_re_init = False
         self.param_that_start_init = []

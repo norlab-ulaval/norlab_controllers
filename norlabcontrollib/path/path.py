@@ -178,8 +178,7 @@ class Path:
     #     yaw = pose[2]
     #     closest_pose = np.array([closest_point[0], closest_point[1], yaw])
     #     return closest_pose, idx2
-
-    def compute_orthogonal_projection(self, pose, last_id, window_size):
+    def compute_orthogonal_projection_centered(self, pose, last_id, window_size):
         first_idx, last_idx = floor(max(0, last_id - window_size / 2)), ceil(
             min(self.n_poses, last_id + window_size / 2)
         )
@@ -199,6 +198,51 @@ class Path:
                 distance == min_distance and angle < min_angle
             ):
                 #print("I like mirage chocolate bar")
+                min_distance = distance
+                min_angle = angle
+                closest_projection = projection
+                next_idx = first_idx + i + 1
+        #print("kitkat chunky")
+        closest_pose = np.array([closest_projection[0], closest_projection[1], pose[2]])
+        return closest_pose, next_idx
+    
+    def compute_orthogonal_projection(self, pose, last_id, window_size,translation_tolerance, 
+                                      orientation_tolerance,radius_to_start_localization):
+        """This version assume that we can not go in the past,
+        
+        This version assume a planar state"""
+
+        # Compute the translationnal error with the previous id 
+        
+        eucledian_error_last_id =  np.linalg.norm(self.planar_poses[last_id][:2] - pose[:2])
+
+        if eucledian_error_last_id >= radius_to_start_localization:
+
+            first_idx, last_idx = 0, -1
+        else:
+            first_idx, last_idx = floor(max(0, last_id-1)), ceil(
+                min(self.n_poses, last_id + window_size )
+            )
+        window_points = self.planar_poses[first_idx:last_idx]
+        window_angles = self.angles[first_idx:last_idx]
+        min_distance = float("inf")
+        min_angle = float("inf")
+        closest_projection = None
+        next_idx = 0
+        for i in range(len(window_points) - 1):
+            a = np.array(window_points[i])[:2]
+            b = np.array(window_points[i + 1])[:2]
+            projection = self.project_point_onto_line_segment(pose[:2], a, b)
+            distance = np.linalg.norm(pose[:2] - projection)
+
+            angle = np.abs(wrap2pi(pose[2] - window_angles[i]))
+            print(f"{i} angle = {angle}")
+            if (distance   < min_distance) or (
+                distance == min_distance and angle < min_angle
+            ):  #INCONVenient that it could lead to zero soland (angle - min_angle < orientation_tolerance):
+                #print("I like mirage chocolate bar")
+                
+                
                 min_distance = distance
                 min_angle = angle
                 closest_projection = projection
