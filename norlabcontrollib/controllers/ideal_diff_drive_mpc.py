@@ -28,8 +28,8 @@ class IdealDiffDriveMPC(Controller):
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
 
-        self.distance_to_goal = 100000
-        #self.euclidean_distance_to_goal = 100000
+        self.linear_distance_to_goal = 100000
+        self.euclidean_distance_to_goal = 100000
 
         self.angular_distance_to_goal = np.pi
         self.next_path_idx = 0
@@ -136,22 +136,20 @@ class IdealDiffDriveMPC(Controller):
 
 
     def compute_distance_to_goal(self, state, orthogonal_projection_id):
-        #self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
-        
-        distance_2_goal_path = self.path.distances_to_goal[orthogonal_projection_id]
-        euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
-        self.distance_to_goal =  np.max([distance_2_goal_path,euclidean_distance_to_goal]) #np.linalg.norm(self.path.poses[-1, :2] - state[:2]) 
-        
-        pose_angular_distant = np.abs(wrap2pi(self.path.poses[-1, 5] - state[5]))
-        node_angular_distance = np.abs(self.path.angular_distances_to_goal[orthogonal_projection_id])
-        self.angular_distance_to_goal = np.max([pose_angular_distant,node_angular_distance])
-        
-        #self.angular_distance_to_goal = 
 
+        self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
+        distance_to_goal_path = self.path.distances_to_goal[orthogonal_projection_id]
+        distance_to_next_node = np.linalg.norm(self.path.poses[orthogonal_projection_id, :2] - state[:2])
+        self.linear_distance_to_goal =  distance_to_goal_path + distance_to_next_node 
+        self.angular_distance_to_goal = np.abs(wrap2pi(self.path.poses[-1, 5] - state[5]))
+        
+        
     def compute_desired_trajectory(self, state):
         # Find closest point on path
         #print("test")
-        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(state, self.next_path_idx, self.id_window_size)
+        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(
+            state, self.next_path_idx, self.id_window_size, self.maximum_linear_velocity, self.maximum_angular_velocity
+        )
 
         self.closest_pose = closest_pose
         # Find the points on the path that are accessible within the horizon
@@ -212,11 +210,11 @@ class IdealDiffDriveMPC(Controller):
 
     def goal_reached(self):
 
-        if (self.distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
+        if (self.linear_distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
             
             return True
         
-        elif self.distance_to_goal < self.goal_tolerance:
+        elif self.linear_distance_to_goal < self.goal_tolerance:
             self.debug_indicator[0] = True
         elif np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance:
             self.debug_indicator[1] = True

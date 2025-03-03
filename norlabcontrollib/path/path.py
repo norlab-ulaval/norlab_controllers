@@ -151,61 +151,34 @@ class Path:
         # self.compute_angles()     # Angles taken from WILN
         self.compute_world_to_path_frame_tfs()
         return None
+    
 
-    # def compute_orthogonal_projection(self, pose, last_id, window_size):
-    #     first_idx, last_idx = floor(max(0, last_id - window_size/2)), ceil(min(self.n_poses, last_id + window_size/2))
-    #     window_points = self.poses[first_idx:last_idx, :2]
-    #     distances = np.linalg.norm(window_points - pose[:2], axis=1)
-    #     closest_idx = np.argsort(distances)[0]
-
-    #     prev_idx = closest_idx - 1
-    #     next_idx = closest_idx + 1
-    #     center1 = np.mean([window_points[closest_idx], window_points[prev_idx]])
-    #     center2 = np.mean([window_points[closest_idx], window_points[next_idx]])
-
-    #     idx1, idx2 = first_idx + min(closest_idx, second_idx), first_idx + max(closest_idx, second_idx)
-    #     ptA, ptB = self.poses[idx1, :2], self.poses[idx2, :2]
-    #     if np.linalg.norm(ptB - ptA) < 1e-6:
-    #         closest_point = ptB
-    #     elif np.linalg.norm(pose[:2] - ptA) < 1e-6:
-    #         closest_point = ptA
-    #     else:
-    #         AB, AP = ptB - ptA, pose[:2] - ptA
-    #         t = np.dot(AP, AB) / np.dot(AB, AB)
-    #         closest_point = ptA + t * AB
-
-    #     # yaw = t * self.angles[idx2] + (1 - t) * self.angles[idx1]
-    #     yaw = pose[2]
-    #     closest_pose = np.array([closest_point[0], closest_point[1], yaw])
-    #     return closest_pose, idx2
-
-    def compute_orthogonal_projection(self, pose, last_id, window_size):
-        first_idx, last_idx = floor(max(0, last_id - window_size / 2)), ceil(
-            min(self.n_poses, last_id + window_size / 2)
-        )
+    def compute_orthogonal_projection(self, pose, last_id, window_size, linear_speed, angular_speed):
+        
+        first_idx = floor(max(0, last_id - window_size / 2))
+        last_idx = ceil(min(self.n_poses, last_id + window_size / 2))
         window_points = self.planar_poses[first_idx:last_idx]
         window_angles = self.angles[first_idx:last_idx]
+
         min_distance = float("inf")
-        min_angle = float("inf")
         closest_projection = None
         next_idx = 0
+
         for i in range(len(window_points) - 1):
             a = np.array(window_points[i])[:2]
             b = np.array(window_points[i + 1])[:2]
             projection = self.project_point_onto_line_segment(pose[:2], a, b)
-            distance = np.linalg.norm(pose[:2] - projection)
-            angle = np.abs(wrap2pi(pose[2] - window_angles[i]))
-            if distance < min_distance or (
-                distance == min_distance and angle < min_angle
-            ):
-                #print("I like mirage chocolate bar")
-                min_distance = distance
-                min_angle = angle
+            distance_linear = np.linalg.norm(pose[:2] - projection)
+            distance_angular = np.abs(wrap2pi(pose[2] - window_angles[i]))
+            distance_time = distance_linear/linear_speed + distance_angular/angular_speed
+            if distance_time < min_distance:
+                min_distance = distance_time
                 closest_projection = projection
                 next_idx = first_idx + i + 1
-        #print("kitkat chunky")
+
         closest_pose = np.array([closest_projection[0], closest_projection[1], pose[2]])
         return closest_pose, next_idx
+
 
     def project_point_onto_line_segment(self, p, a, b):
         """Project point p onto line segment ab.
@@ -227,42 +200,23 @@ class Path:
         projection = a + t * ab
         return projection
 
-    # def compute_horizon(self, initial_pose, start_idx, horizon_distance):
-    #     horizon_poses = [initial_pose]
-    #     stop_idx = start_idx
-    #     distance = 0.0
-    #     while distance < horizon_distance and stop_idx < self.n_poses:
-    #         distance += np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2])
-    #         horizon_poses.append(np.array([self.poses[stop_idx, 0], self.poses[stop_idx, 1], self.angles[stop_idx]]))
-    #         stop_idx += 1
 
-    #     return np.array(horizon_poses), distance
+    def compute_horizon(self, initial_pose, start_idx, horizon_duration, linear_speed, angular_speed):
 
-    def compute_horizon(
-        self, initial_pose, start_idx, horizon_duration, linear_speed, angular_speed
-    ):
         horizon_poses = [initial_pose]
         stop_idx = start_idx
         cumul_duration = [0.0]
         while cumul_duration[-1] < horizon_duration and stop_idx < self.n_poses:
-            linear_error = np.linalg.norm(
-                self.poses[stop_idx, :2] - horizon_poses[-1][:2]
-            )
-            angular_error = np.abs(
-                wrap2pi(self.poses[stop_idx, 5] - horizon_poses[-1][2])
-            )
-            travel_time = max(
-                linear_error / linear_speed, angular_error / angular_speed
-            )
+            linear_error = np.linalg.norm(self.poses[stop_idx, :2] - horizon_poses[-1][:2])
+            angular_error = np.abs(wrap2pi(self.poses[stop_idx, 5] - horizon_poses[-1][2]))
+            travel_time = max(linear_error / linear_speed, angular_error / angular_speed)
             cumul_duration.append(cumul_duration[-1] + travel_time)
             horizon_poses.append(
-                np.array(
-                    [
+                np.array([
                         self.poses[stop_idx, 0],
                         self.poses[stop_idx, 1],
                         self.angles[stop_idx],
-                    ]
-                )
+                ])
             )
             stop_idx += 1
 
