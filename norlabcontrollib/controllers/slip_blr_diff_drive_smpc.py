@@ -10,11 +10,6 @@ import casadi as cas
 class SlipBLRDiffDriveSMPC(Controller):
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
-        self.gain_distance_to_goal_linear = parameter_map['gain_distance_to_goal_linear']
-        self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
-        self.query_radius = parameter_map['query_radius']
-        self.query_knn = parameter_map['query_knn']
-        self.id_window_size = parameter_map['id_window_size']
 
         self.number_states = 3
         self.number_inputs = 2
@@ -51,7 +46,7 @@ class SlipBLRDiffDriveSMPC(Controller):
         self.orthogonal_projection_dists_horizon = np.zeros(self.horizon_length)
         self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
 
-        self.ideal_diff_drive = Ideal_diff_drive(self.wheel_radius, self.baseline, 1/self.rate)
+        self.ideal_diff_drive = IdealDiffDrive(self.wheel_radius, self.baseline, 1/self.rate)
 
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2

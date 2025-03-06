@@ -3,35 +3,31 @@ from norlabcontrollib.models.ideal_diff_drive import IdealDiffDrive
 from norlabcontrollib.util.util_func import interp_angles, wrap2pi
 
 import numpy as np
-from scipy.optimize import minimize
 import casadi as cas
-import math
 
 class IdealDiffDriveMPC(Controller):
 
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
-        self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
-        self.id_window_size = parameter_map['id_window_size']
 
         self.number_states = 3
         self.number_inputs = 2
 
         self.horizon_length = parameter_map['horizon_length']
+        self.id_window_size = parameter_map['id_window_size']
         self.state_cost_translational = parameter_map['state_cost_translational']
         self.state_cost_rotational = parameter_map['state_cost_rotational']
 
         self.input_cost_wheel = parameter_map['input_cost_wheel']
         self.input_cost_matrix_i = np.eye(2) * self.input_cost_wheel
         
-        self.angular_velocity_gain = parameter_map['angular_velocity_gain']
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
 
-        self.linear_distance_to_goal = 100000
-        self.euclidean_distance_to_goal = 100000
-
+        self.linear_distance_to_goal = float('inf')
+        self.euclidean_distance_to_goal = float('inf')
         self.angular_distance_to_goal = np.pi
+
         self.next_path_idx = 0
         self.next_command_id = 0
         
@@ -39,12 +35,14 @@ class IdealDiffDriveMPC(Controller):
 
         self.debug_indicator = [False,False,False]
 
+
     def init_casadi_model(self):
+        
         ### Init value moved to be able to reset casadi init 
         self.orthogonal_projection_ids_horizon = np.zeros(self.horizon_length).astype('int32')
         self.orthogonal_projection_dists_horizon = np.zeros(self.horizon_length)
         self.prediction_input_covariances = np.zeros((2, 2, self.horizon_length))
-        self.motion_model = IdealDiffDrive(self.wheel_radius, self.baseline, 1/self.rate, self.angular_velocity_gain)
+        self.motion_model = IdealDiffDrive(self.wheel_radius, self.baseline, 1/self.rate)
         
         previous_body_vel_input_array = np.zeros((2, self.horizon_length))
         previous_body_vel_input_array[0, :] = self.maximum_linear_velocity / 2
@@ -145,8 +143,8 @@ class IdealDiffDriveMPC(Controller):
         
         
     def compute_desired_trajectory(self, state):
+        
         # Find closest point on path
-        #print("test")
         closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(
             state, self.next_path_idx, self.id_window_size, self.maximum_linear_velocity, self.maximum_angular_velocity
         )
@@ -168,6 +166,7 @@ class IdealDiffDriveMPC(Controller):
 
 
     def compute_command_vector(self, state):
+
         self.planar_state = np.array([state[0], state[1], state[5]])
         self.compute_desired_trajectory(self.planar_state)
         nlp_params = np.concatenate((self.planar_state, self.target_trajectory.flatten('C'),
@@ -197,6 +196,7 @@ class IdealDiffDriveMPC(Controller):
     
 
     def get_next_command(self):
+
         if self.next_command_id < self.horizon_length:
             self.optimal_left = self.optim_control_solution[self.next_command_id]
             self.optimal_right = self.optim_control_solution[self.next_command_id + self.horizon_length]
@@ -210,11 +210,11 @@ class IdealDiffDriveMPC(Controller):
 
     def goal_reached(self):
 
-        if (self.linear_distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
+        if (self.linear_distance_to_goal < self.linear_goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
             
             return True
         
-        elif self.linear_distance_to_goal < self.goal_tolerance:
+        elif self.linear_distance_to_goal < self.linear_goal_tolerance:
             self.debug_indicator[0] = True
         elif np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance:
             self.debug_indicator[1] = True
