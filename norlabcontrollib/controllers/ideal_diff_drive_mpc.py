@@ -8,6 +8,7 @@ import casadi as cas
 import math
 
 class IdealDiffDriveMPC(Controller):
+
     def __init__(self, parameter_map):
         super().__init__(parameter_map)
         self.path_look_ahead_distance = parameter_map['path_look_ahead_distance']
@@ -27,12 +28,16 @@ class IdealDiffDriveMPC(Controller):
         self.wheel_radius = parameter_map['wheel_radius']
         self.baseline = parameter_map['baseline']
 
-        self.distance_to_goal = 100000
+        self.linear_distance_to_goal = 100000
         self.euclidean_distance_to_goal = 100000
+
+        self.angular_distance_to_goal = np.pi
         self.next_path_idx = 0
         self.next_command_id = 0
         
         self.init_casadi_model()
+
+        self.debug_indicator = [False,False,False]
 
     def init_casadi_model(self):
         ### Init value moved to be able to reset casadi init 
@@ -129,18 +134,24 @@ class IdealDiffDriveMPC(Controller):
         # Casadi has been re_init. 
         self.function_to_re_init = False
 
-    def update_path(self, new_path):
-        self.path = new_path
-        return None
-    
-    def compute_distance_to_goal(self, state, orthogonal_projection_id):
-        self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
-        self.distance_to_goal = self.path.distances_to_goal[orthogonal_projection_id]
 
+    def compute_distance_to_goal(self, state, orthogonal_projection_id):
+
+        self.euclidean_distance_to_goal = np.linalg.norm(self.path.poses[-1, :2] - state[:2])
+        distance_to_goal_path = self.path.distances_to_goal[orthogonal_projection_id]
+        distance_to_next_node = np.linalg.norm(self.path.poses[orthogonal_projection_id, :2] - state[:2])
+        self.linear_distance_to_goal =  distance_to_goal_path + distance_to_next_node 
+        self.angular_distance_to_goal = np.abs(wrap2pi(self.path.poses[-1, 5] - state[5]))
+        
+        
     def compute_desired_trajectory(self, state):
         # Find closest point on path
-        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(state, self.next_path_idx, self.id_window_size)
+        #print("test")
+        closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(
+            state, self.next_path_idx, self.id_window_size, self.maximum_linear_velocity, self.maximum_angular_velocity
+        )
 
+        self.closest_pose = closest_pose
         # Find the points on the path that are accessible within the horizon
         horizon_duration = self.horizon_length / self.rate
         horizon_poses, cumul_duration = self.path.compute_horizon(closest_pose, self.next_path_idx, horizon_duration, self.maximum_linear_velocity, self.maximum_angular_velocity)
@@ -163,10 +174,12 @@ class IdealDiffDriveMPC(Controller):
             np.array([self.input_cost_wheel]), np.array([self.state_cost_translational]),
             np.array([self.state_cost_rotational])
         )) 
-        self.optim_control_solution = self.optim_problem_solver(x0=self.previous_input_array.flatten(),
-                                                           p=nlp_params,
-                                                           lbx= self.lower_bound_input,
-                                                           ubx= self.upper_bound_input)['x']
+        self.optim_control_solution = self.optim_problem_solver(
+            x0=self.previous_input_array.flatten(),
+            p=nlp_params,
+            lbx= self.lower_bound_input,
+            ubx= self.upper_bound_input
+        )['x']
 
         self.optimal_left = self.optim_control_solution[0]
         self.optimal_right = self.optim_control_solution[self.horizon_length]
@@ -182,6 +195,7 @@ class IdealDiffDriveMPC(Controller):
         self.next_command_id = 1
         return body_input_array.reshape(2)
     
+
     def get_next_command(self):
         if self.next_command_id < self.horizon_length:
             self.optimal_left = self.optim_control_solution[self.next_command_id]
@@ -192,6 +206,19 @@ class IdealDiffDriveMPC(Controller):
         else:
             body_input_array = np.array([0.0, 0.0]) # Stop if we never receive odom
         return body_input_array.reshape(2), self.next_command_id-1
+
+
+    def goal_reached(self):
+
+        if (self.linear_distance_to_goal < self.goal_tolerance) and (np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance): 
+            
+            return True
+        
+        elif self.linear_distance_to_goal < self.goal_tolerance:
+            self.debug_indicator[0] = True
+        elif np.abs(self.angular_distance_to_goal) < self.angular_goal_tolerance:
+            self.debug_indicator[1] = True
+        
 
 
 if __name__ == "__main__":
@@ -305,7 +332,11 @@ if __name__ == "__main__":
         plt.scatter(robot_pose[0], robot_pose[1], c='k', label='Robot Pose')
         plt.quiver(robot_pose[0], robot_pose[1], np.cos(robot_pose[5]), np.sin(robot_pose[5]), color='k')
         plt.axis('equal')
+        plt.quiver(controller.closest_pose[0],controller.closest_pose[1],np.cos(controller.closest_pose[2]),np.sin(controller.closest_pose[2]),color="cyan",label="closest pose",zorder=10)
         plt.legend()
+        plt.ylim(-3.5,-2.5)
+        plt.xlim(-1,0.5)
+
 
     # Plot trajectory
     import matplotlib.pyplot as plt

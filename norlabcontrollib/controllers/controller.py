@@ -8,6 +8,7 @@ class Controller(metaclass=ABCMeta):
         self.maximum_linear_velocity = parameter_map['maximum_linear_velocity']
         self.maximum_angular_velocity = parameter_map['maximum_angular_velocity']
         self.goal_tolerance = parameter_map['goal_tolerance']
+        self.angular_goal_tolerance = parameter_map["angular_goal_tolerance"]
         # For dynamic [parameter]
         self.function_to_re_init = False
         self.param_that_start_init = []
@@ -17,4 +18,5 @@ class Controller(metaclass=ABCMeta):
 
     def update_path(self, new_path):
         self.path = new_path
+        self.path.compute_metrics()
         pass
