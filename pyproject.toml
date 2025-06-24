@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "norlabcontrollib"
+version = "0.1.0"
+description = "Norlab control library"
+authors = [
+  { name = "Dominic Baril" }
+]
+license = { text = "BSD" }
+
+[tool.setuptools]
+packages = [
+  "norlabcontrollib",
+  "norlabcontrollib.controllers",
+  "norlabcontrollib.path",
+  "norlabcontrollib.models",
+  "norlabcontrollib.util"
+]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
