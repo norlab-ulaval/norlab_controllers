@@ -2,6 +2,7 @@ from norlabcontrollib.controllers.differential_orthogonal_exponential import Dif
 from norlabcontrollib.controllers.differential_rotation_p import DifferentialRotationP
 from norlabcontrollib.controllers.ideal_diff_drive_mpc import IdealDiffDriveMPC
 from norlabcontrollib.controllers.slip_blr_diff_drive_smpc import SlipBLRDiffDriveSMPC
+from norlabcontrollib.controllers.ideal_articulated_drive_mpc import IdealArticulatedDriveMPC
 import yaml
 
 
