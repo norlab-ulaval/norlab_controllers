@@ -57,6 +57,8 @@ class MPPI(Controller):
         self.linear_distance_to_goal = float('inf')
         self.euclidean_distance_to_goal = float('inf')
         self.angular_distance_to_goal = np.pi
+        # Reset the warm-start so a stale optimum from the previous path doesn't bias the first iteration.
+        self.a_opt = jnp.zeros((self.horizon_length, self.n_inputs))
 
     def compute_desired_trajectory(self, state):
         closest_pose, self.next_path_idx = self.path.compute_orthogonal_projection(

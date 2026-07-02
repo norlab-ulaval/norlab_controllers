@@ -1,5 +1,5 @@
 matplotlib
-numpy
+numpy<2
 scipy
 PyYAML
 casadi==3.6.5
