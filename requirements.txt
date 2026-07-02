@@ -3,3 +3,5 @@ numpy
 scipy
 PyYAML
 casadi==3.6.5
+jax
+jaxlib
