@@ -51,6 +51,24 @@ class MPPI(Controller):
         self.rng_key, subkey = jax.random.split(self.rng_key)
         return subkey
 
+    def reinit_model(self):
+        # Recompute state derived from parameters after a runtime parameter update.
+        self.dt = 1.0 / self.rate
+        self.motion_model = IdealDiffDrive(self.wheel_radius, self.baseline, self.dt)
+        self.jacobian_3x2 = jnp.array(self.motion_model.jacobian_3x2)
+        self.max_wheel_vel = float(
+            self.motion_model.compute_wheel_vels(np.array([self.maximum_linear_velocity, 0]))[0]
+        )
+        self.control_sample_std = self.control_sample_std_ratio * self.max_wheel_vel
+
+        self.accum_matrix = jnp.triu(jnp.ones((self.horizon_length, self.horizon_length)))
+        self.a_opt = jnp.zeros((self.horizon_length, self.n_inputs))
+
+        # self is a static jit argument, so the jitted methods below trace values like
+        # horizon_length/n_samples into their compiled program the first time they run.
+        # Mutating those attributes in place won't retrace without clearing the cache.
+        jax.clear_caches()
+
     def update_path(self, new_path):
         super().update_path(new_path)
         self.next_path_idx = 0
