@@ -47,6 +47,8 @@ class MPPI(Controller):
         self.euclidean_distance_to_goal = float('inf')
         self.angular_distance_to_goal = np.pi
 
+        self.warmup()
+
     def new_key(self):
         self.rng_key, subkey = jax.random.split(self.rng_key)
         return subkey
@@ -68,6 +70,19 @@ class MPPI(Controller):
         # horizon_length/n_samples into their compiled program the first time they run.
         # Mutating those attributes in place won't retrace without clearing the cache.
         jax.clear_caches()
+        self.warmup()
+
+    def warmup(self):
+        dummy_state = jnp.zeros(3)
+        dummy_reference = jnp.zeros((self.horizon_length, 3))
+        saved_a_opt = self.a_opt
+
+        self.update(dummy_state, dummy_reference)
+        # block until compilation + execution actually finish
+        self.a_opt.block_until_ready()
+
+        # restore state so warmup doesn't leave a stale warm-start behind
+        self.a_opt = saved_a_opt
 
     def update_path(self, new_path):
         super().update_path(new_path)
@@ -123,14 +138,22 @@ class MPPI(Controller):
         ])
         return state + world_vel * self.dt
 
+    # @partial(jax.jit, static_argnums=(0,))
+    # def rollout(self, state, actions):
+    #     # actions: [horizon_length, n_inputs] -> states: [horizon_length, 3]
+    #     states = []
+    #     for t in range(self.horizon_length):
+    #         state = self.dynamics(state, actions[t, :])
+    #         states.append(state)
+    #     return jnp.asarray(states)
+    
     @partial(jax.jit, static_argnums=(0,))
     def rollout(self, state, actions):
-        # actions: [horizon_length, n_inputs] -> states: [horizon_length, 3]
-        states = []
-        for t in range(self.horizon_length):
-            state = self.dynamics(state, actions[t, :])
-            states.append(state)
-        return jnp.asarray(states)
+        def step(carry_state, action):
+            next_state = self.dynamics(carry_state, action)
+            return next_state, next_state
+        _, states = jax.lax.scan(step, state, actions)
+        return states
 
     @partial(jax.jit, static_argnums=(0,))
     def reward_fn(self, states, reference_traj, actions, previous_action):
